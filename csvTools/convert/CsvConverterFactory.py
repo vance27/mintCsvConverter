@@ -33,6 +33,9 @@ class CsvConverterFactory:
         "METRONET",
         "XCEL ENERGY",
         'FLAGSTAR',
+        'ROUNDPOINT MTG PAYMENTS',
+        'WITHDRAWAL ACH ALLY BANK',
+        'ATM Fee Reimbursement',
         'APPLE.COM/BILL',
         'VANGUARD FEDERAL MONEY MARKET FUND (Settlement Fund)',
         'VANGUARD TOTAL STOCK MARKET INDEX',
@@ -46,6 +49,7 @@ class CsvConverterFactory:
         'MOBILE PAYMENT - THANK YOU',
         'INTERNET PAYMENT - THANK YOU',
         'AUTOPAY PAYMENT - THANK YOU',
+        'PAYMENT THANK YOU',
         'Web Authorized Pmt',
         
     ],
