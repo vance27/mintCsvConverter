@@ -4,42 +4,63 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A small Python 3 script (no external dependencies) that converts a Mint.com transaction export CSV into a CSV formatted for a Google Sheets expense-splitting workflow. It excludes personal-only, payer-specific transactions (transfers, individual purchases, etc.) and classifies every remaining transaction as either "split equally" (including known shared/joint bills) or "split variably" for a configurable set of vendors.
+A TypeScript/pnpm monorepo that converts a Citi.com transaction export CSV into a CSV formatted for a Google Sheets expense-splitting workflow, and (in progress) pushes that data straight into the shared sheet via an extended Apps Script instead of manual copy-paste. It excludes personal-only, payer-specific transactions (transfers, individual purchases, etc.) and classifies every remaining transaction as either "split equally" (including known shared/joint bills) or "split variably" for a configurable set of vendors.
+
+This was ported from an original Python implementation; see git history for that version if needed. The port fixed two real bugs discovered by testing against a real export:
+
+- The Python version assumed Mint's CSV layout (`Date, Description, Original Description, Amount`). The actual input is Citi's layout (`Status, Date, Description, Debit, Credit, Member Name`) — completely different column order. Import now maps columns by header name instead of by position.
+- Vendor-list matching (`personalExclusions`, `splitRulesDict`) is case-insensitive. Citi's descriptions are mostly ALL CAPS; several vendor-list entries (e.g. `'Costco'`, `'Web Authorized Pmt'`) are mixed/title case and never matched under case-sensitive comparison.
+- Refund amounts (a populated `Credit` column that isn't a card payment) preserve their negative sign instead of being forced positive — see `normalizeAmount` in `importFileToLines.ts`.
+
+## Package layout (pnpm workspace)
+
+- `packages/core` — the conversion engine, ported 1:1 in behavior (plus the fixes above) from the original Python `csvTools`/`main.py`. Dependency-light: `csv-parse`/`csv-stringify` for CSV I/O, otherwise Node stdlib.
+- `packages/automation` — Sheets HTTP client + sync orchestrator (in progress; see plan for phases 3-5).
+
+Root-level tooling: `pnpm-workspace.yaml`, `tsconfig.base.json` (strict mode, extended per-package), `.npmrc` (`save-exact=true`), and `pnpm-workspace.yaml`'s supply-chain settings (`minimumReleaseAge`, `blockExoticSubdeps`, `trustPolicy`, `allowBuilds`) — **dependency versions are pinned exactly, no `^`/`~` ranges**; use `pnpm add --save-exact` (or rely on `.npmrc`) when adding anything new, and update `allowBuilds` deliberately rather than blanket-approving postinstall scripts.
 
 ## Running it
 
 ```
-python3 main.py <input_file.csv> EXPENSE_SPLITTING <PayerName>
+cd packages/core
+pnpm build
+node dist/main.js <input_file.csv> EXPENSE_SPLITTING <PayerName>
 ```
+
+Or during development, skip the build step: `pnpm exec tsx src/main.ts <input_file.csv> EXPENSE_SPLITTING <PayerName>` from `packages/core`.
 
 Example:
 
 ```
-python3 main.py transactions.csv EXPENSE_SPLITTING Brian
+node dist/main.js transactions.csv EXPENSE_SPLITTING Brian
 ```
 
-`<PayerName>` must exist (case-insensitively) as a key in `personalExclusions` in [csvTools/convert/CsvConverterFactory.py](csvTools/convert/CsvConverterFactory.py) — this determines which set of personal, non-splittable transaction descriptions get excluded for that payer. Currently supported names: `PATRICE`, `BRIAN`. `--help` is also supported (via `argparse`).
+`<PayerName>` must exist (case-insensitively) as a key in `personalExclusions` in [packages/core/src/csvConverterFactory.ts](packages/core/src/csvConverterFactory.ts) — this determines which set of personal, non-splittable transaction descriptions get excluded for that payer. Currently supported names: `PATRICE`, `BRIAN`. `--help`/`-h` is also supported.
 
-`EXPENSE_SPLITTING` is currently the only supported `outputFormat`; any other value raises `ValueError` naming the bad format.
+`EXPENSE_SPLITTING` is currently the only supported `outputFormat`; any other value throws an `Error` naming the bad format.
 
-There is no build step or dependency install (uses only the Python standard library). Run the test suite with `make test` (or `python3 -m unittest discover -s tests -t .`).
+Run the full workspace test suite from the repo root with `pnpm -r test` (or `pnpm --filter @mint-csv-converter/core test` for just the converter), and typecheck with `pnpm -r typecheck`.
 
 ## Architecture
 
-Three-stage pipeline wired together in [main.py](main.py):
+Three-stage pipeline wired together in [packages/core/src/main.ts](packages/core/src/main.ts):
 
-1. **Import** — `ImportFileToLines.ImportFileTolines` ([csvTools/fileInteraction/ImportFileToLines.py](csvTools/fileInteraction/ImportFileToLines.py)) reads the input CSV into a list of row-lists via `csv.reader` with `QUOTE_NONNUMERIC`.
-2. **Convert** — `CsvConverterFactory` ([csvTools/convert/CsvConverterFactory.py](csvTools/convert/CsvConverterFactory.py)) is a factory keyed on `outputFormat` string that dispatches to a converter method (currently only `_convert_to_expense_splitting`). That method:
+1. **Import** — `ImportFileToLines` ([packages/core/src/importFileToLines.ts](packages/core/src/importFileToLines.ts)) reads the input CSV, locates `Date`/`Description`/`Debit`/`Credit` by header name (case-insensitive, order-independent), and normalizes each row to `[date, description, '', amount]` — `amount` comes from whichever of Debit/Credit is populated, sign preserved (see refund handling above).
+2. **Convert** — `CsvConverterFactory` ([packages/core/src/csvConverterFactory.ts](packages/core/src/csvConverterFactory.ts)) is keyed on `outputFormat` string, dispatching to a converter method (currently only `convertToExpenseSplitting`). That method:
    - Skips the header row (index 0).
-   - Iterates rows in reverse, and for each row checks `_valid_line` against `personalExclusions[<PAYER_NAME>]` (substring match against `line[1]`, the Mint description column). Matching lines are personal spending and are routed to `invalidLines`; everything else is kept.
-   - For kept lines, checks `_variable_split` against `splitRulesDict["VARIABLE"]` to decide whether the row is tagged `"Variably"` (split `%`/`%`) or `"Equally"` (split `TRUE`/`TRUE`). `splitRulesDict["SHARED"]` is documentation of known joint bills (e.g. mortgage, insurance) that also land in the `"Equally"` bucket — it isn't branched on separately in code since that's already the default for any non-excluded, non-variable transaction.
-   - Returns a `(result, invalidLines)` tuple. Output columns are: `date + description`, payer name, amount (`line[3]` from the Mint export), split type, and two split-ratio columns.
-3. **Export** — `ExportFileToLines` ([csvTools/fileInteraction/ExportFileToLines.py](csvTools/fileInteraction/ExportFileToLines.py)) writes both `result` and `invalidLines` out as separate CSV files, named `<name>_<timestamp>_<VALID|INVALID>_csvConverter.csv`, into the current working directory.
+   - Iterates rows in reverse, and for each row checks `isValidLine` against `personalExclusions[<PAYER_NAME>]` (case-insensitive substring match against `line[1]`, the description). Matching lines are personal spending and are routed to `invalidLines`; everything else is kept.
+   - For kept lines, checks `isVariableSplit` against `splitRulesDict.VARIABLE` to decide whether the row is tagged `"Variably"` (split `%`/`%`) or `"Equally"` (split `TRUE`/`TRUE`). `splitRulesDict.SHARED` is documentation of known joint bills (e.g. mortgage, insurance) that also land in the `"Equally"` bucket — it isn't branched on separately in code since that's already the default for any non-excluded, non-variable transaction.
+   - Returns a `[result, invalidLines]` tuple. Output columns are: `date + description`, payer name, amount (`line[3]`), split type, and two split-ratio columns.
+3. **Export** — `ExportFileToLines` ([packages/core/src/exportFileToLines.ts](packages/core/src/exportFileToLines.ts)) writes both `result` and `invalidLines` out as separate CSV files, named `<name>_<timestamp>_<VALID|INVALID>_csvConverter.csv`, into the current working directory.
 
 ### Adding a new payer
 
-Add a new uppercase key to `personalExclusions` in `CsvConverterFactory` with a list of Mint description substrings that should be excluded (personal-only spending, transfers, etc.) for that payer. The key must match the `name` CLI arg uppercased.
+Add a new uppercase key to `personalExclusions` in `CsvConverterFactory` with a list of description substrings that should be excluded (personal-only spending, transfers, etc.) for that payer. The key must match the `name` CLI arg uppercased. Matching is case-insensitive, so casing in the list doesn't need to match the export's casing.
 
 ### Adding a new output format
 
-Add a new `outputFormat` branch in `_get_converter` pointing to a new `_convert_to_*` method following the same `(lines, name) -> (result, invalidLines)` signature.
+Add a new `outputFormat` branch in `getConverter` pointing to a new `convertTo*` method following the same `(lines, name) -> [result, invalidLines]` signature.
+
+## In-progress: Google Sheets automation
+
+See the active plan for the full design (Apps Script `doPost` endpoint reusing existing `onEdit`/`calculate()` logic, a TS Sheets HTTP client, and a `sync` orchestrator that takes a manually-exported CSV — Playwright-based Citi automation was explicitly ruled out). `packages/automation` is scaffolded but not yet implemented beyond a placeholder.

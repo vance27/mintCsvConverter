@@ -1,15 +1,29 @@
-# Python Mint CSV Converter
+# Expense Splitting CSV Converter
 
-This is a simple Python script that converts a CSV file exported from Mint.com into a CSV file that can be imported into google sheets expense splitting.
+Converts a Citi.com transaction export CSV into a CSV formatted for a Google Sheets expense-splitting workflow.
 
-It removes lines that are not meant to be used in expense splitting or are already shared expenses.
+It excludes transactions that shouldn't be split (personal-only purchases, transfers) and classifies everything else as split equally or split variably for a configurable set of vendors.
 
-To use:
+TypeScript/pnpm monorepo — see [CLAUDE.md](CLAUDE.md) for architecture details.
 
+## Usage
+
+```bash
+cd packages/core
+pnpm build
+node dist/main.js <input_file.csv> EXPENSE_SPLITTING <Person who paid for the expense>
 ```
-python3 main.py <input_file.csv exported from MINT> EXPENSE_SPLITTING <Person who paid for Expense>
+
+Example:
+
+```bash
+node dist/main.js transactions.csv EXPENSE_SPLITTING Brian
 ```
 
-```
-python3 main.py transactions.csv EXPENSE_SPLITTING Brian 
+## Development
+
+```bash
+pnpm install
+pnpm -r typecheck
+pnpm -r test
 ```

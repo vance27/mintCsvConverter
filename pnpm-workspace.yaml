@@ -1,0 +1,14 @@
+packages:
+  - "packages/*"
+
+# Supply-chain security (https://pnpm.io/supply-chain-security)
+minimumReleaseAge: 1440 # 24h delay before a newly-published version is installable
+blockExoticSubdeps: true # transitive deps must come from the registry, not git/tarball URLs
+trustPolicy: no-downgrade # refuse a package version whose trust signals regressed
+
+# esbuild is a transitive dependency of tsx; its postinstall only downloads
+# the matching platform-specific native binary from the registry (a common,
+# well-established pattern shared by esbuild/swc/turbopack) — no other
+# scripts are allowed to run.
+allowBuilds:
+  esbuild: true
