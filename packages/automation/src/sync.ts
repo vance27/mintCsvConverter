@@ -95,7 +95,7 @@ export async function runSync(options: SyncOptions, deps: SyncDeps): Promise<Syn
   // dropping a same-day transaction that wasn't in a prior overlapping
   // export. There's no unique transaction ID in Citi's export to dedupe on
   // more precisely than date.
-  const newRows = lastSyncedIso ? dataRows.filter((row) => toIsoDate(row[0]!) >= lastSyncedIso) : dataRows;
+  const newRows = lastSyncedIso ? dataRows.filter((row) => toIsoDate(row[0]) >= lastSyncedIso) : dataRows;
   const skippedAsAlreadySynced = dataRows.length - newRows.length;
 
   const groups = groupRowsByPeriod(newRows);
@@ -127,7 +127,7 @@ export async function runSync(options: SyncOptions, deps: SyncDeps): Promise<Syn
 
   if (dataRows.length > 0) {
     const newestIso = dataRows.reduce((max, row) => {
-      const iso = toIsoDate(row[0]!);
+      const iso = toIsoDate(row[0]);
       return iso > max ? iso : max;
     }, lastSyncedIso ?? '');
     deps.saveSyncState(options.syncStateFile, { ...state, [options.name]: newestIso });
@@ -139,7 +139,7 @@ export async function runSync(options: SyncOptions, deps: SyncDeps): Promise<Syn
 function groupRowsByPeriod(rows: TransactionRow[]): Map<string, TransactionRow[]> {
   const groups = new Map<string, TransactionRow[]>();
   for (const row of rows) {
-    const period = getPeriodLabel(row[0]!);
+    const period = getPeriodLabel(row[0]);
     const group = groups.get(period);
     if (group) {
       group.push(row);

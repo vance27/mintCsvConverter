@@ -93,7 +93,7 @@ describe('ExportFileToLines', () => {
     try {
       const writtenFiles = readdirSync(dir);
       expect(writtenFiles.length).toBe(1);
-      const filename = writtenFiles[0]!;
+      const filename = writtenFiles[0];
       expect(filename.includes(' ')).toBe(false);
       expect(filename.includes(':')).toBe(false);
 

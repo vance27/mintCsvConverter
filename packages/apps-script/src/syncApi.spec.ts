@@ -129,7 +129,7 @@ describe('doPost', () => {
   it('rejects a request missing required fields', () => {
     setScriptPropertyForTest('SYNC_TOKEN', 'correct-token');
     const response = doPost(makeEvent({ token: 'correct-token', payerName: 'Brian' }));
-    const body = JSON.parse(response.getContent());
+    const body = JSON.parse(response.getContent()) as { ok: boolean; error?: string };
     expect(body.ok).toBe(false);
     expect(body.error).toMatch(/Expected \{ token, payerName, periodLabel, rows \}/);
   });
@@ -160,7 +160,7 @@ describe('doPost', () => {
     // No active spreadsheet configured -> addTransactionsForPeriod's call
     // to SpreadsheetApp.getActiveSpreadsheet() throws.
     const response = doPost(makeEvent({ token: 'correct-token', payerName: 'Brian', periodLabel: '07/26', rows: [] }));
-    const body = JSON.parse(response.getContent());
+    const body = JSON.parse(response.getContent()) as { ok: boolean; error?: string };
     expect(body.ok).toBe(false);
     expect(body.error).toMatch(/setActiveSpreadsheetForTest/);
   });

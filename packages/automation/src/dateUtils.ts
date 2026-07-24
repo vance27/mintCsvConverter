@@ -17,5 +17,5 @@ export function getPeriodLabel(dateString: string): string {
     throw new Error(`Unrecognized date format (expected MM/DD/YYYY): ${dateString}`);
   }
   const [, month, , year] = match;
-  return `${month}/${year!.slice(2)}`;
+  return `${month}/${year.slice(2)}`;
 }

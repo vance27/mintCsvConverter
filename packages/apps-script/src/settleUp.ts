@@ -64,7 +64,7 @@ export function buildDebtMatrix(
 
     const payeeIndex = participantIndexByName[payeeName];
     const amountRange = sheet.getRange(transactionRow, AMOUNT_COLUMN, 1, 1);
-    const amount = amountRange.getValue();
+    const amount = amountRange.getValue() as number;
 
     const isEquallySplit = isEquallySplitRow(sheet, transactionRow);
     let equallySplitParticipantCount = 0;
@@ -84,12 +84,14 @@ export function buildDebtMatrix(
       }
       const payerColumn = PARTICIPANT_COLUMN_OFFSET + payerIndex + 1;
       const participantSplitRange = sheet.getRange(transactionRow, payerColumn);
-      const participantSplitValue = participantSplitRange.getValue();
+      // The cell holds a checkbox (boolean) for an equally-split row or a
+      // percentage share (number) for a variably-split row.
+      const participantSplitValue = participantSplitRange.getValue() as number | boolean;
       if (isEquallySplit && participantSplitValue == true) {
         const owedAmount = amount / equallySplitParticipantCount;
         debtMatrix[payerIndex][payeeIndex] += owedAmount;
       } else if (isVariablySplit && participantSplitValue != 0) {
-        const owedAmount = (participantSplitValue / totalVariableShares) * amount;
+        const owedAmount = (Number(participantSplitValue) / totalVariableShares) * amount;
         debtMatrix[payerIndex][payeeIndex] += owedAmount;
       }
     }
@@ -144,7 +146,7 @@ export function indexOfMax(values: number[]): number {
  * @param participantNames - Participant names in column order.
  * @param participantIndexByName - Lookup from participant name to index.
  * @param participantCount - Number of participants.
- * @param totalRowAnchor - The off-by-one anchor from getTotalRowAnchor.
+ * @param _totalRowAnchor - Unused directly, but kept for signature parity with computeSettlementPayments.
  * @returns Payments as `[payerIndex, payeeIndex, paymentAmount]` tuples.
  */
 export function simplifyDebts(
@@ -153,7 +155,7 @@ export function simplifyDebts(
   participantNames: string[],
   participantIndexByName: Record<string, number>,
   participantCount: number,
-  totalRowAnchor: number,
+  _totalRowAnchor: number,
 ): number[][] {
   const netBalances: number[] = [];
 
@@ -206,7 +208,7 @@ export function computeSettlementPayments(
   const simplifyToggleRow = totalRowAnchor + 1 + 1; // header + 1
   const simplifyToggleColumn = SPLIT_TYPE_COLUMN;
   const simplifyToggleRange = sheet.getRange(simplifyToggleRow, simplifyToggleColumn);
-  const shouldSimplifyDebts = simplifyToggleRange.getValue();
+  const shouldSimplifyDebts = simplifyToggleRange.getValue() as boolean;
 
   Logger.log(shouldSimplifyDebts);
   if (shouldSimplifyDebts == true) {

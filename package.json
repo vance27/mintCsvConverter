@@ -9,9 +9,12 @@
   "scripts": {
     "build": "nx run-many -t build",
     "test": "nx run-many -t test",
-    "typecheck": "nx run-many -t typecheck"
+    "typecheck": "nx run-many -t typecheck",
+    "lint": "nx run-many -t lint"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@nx/eslint": "23.1.0",
     "@nx/js": "23.1.0",
     "@nx/rollup": "23.1.0",
     "@nx/vitest": "23.1.0",
@@ -21,11 +24,14 @@
     "@swc/helpers": "0.5.23",
     "@types/google-apps-script": "2.0.11",
     "@types/node": "26.1.1",
+    "eslint": "10.7.0",
+    "globals": "17.7.0",
     "nx": "23.1.0",
     "rollup": "4.62.2",
     "tslib": "2.8.1",
     "tsx": "4.23.1",
     "typescript": "5.8.3",
+    "typescript-eslint": "8.65.0",
     "vite": "8.1.5",
     "vitest": "4.1.10"
   }

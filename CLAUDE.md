@@ -39,7 +39,7 @@ node dist/main.js transactions.csv EXPENSE_SPLITTING Brian
 
 `EXPENSE_SPLITTING` is currently the only supported `outputFormat`; any other value throws an `Error` naming the bad format.
 
-Run the full workspace test suite from the repo root with `pnpm test` (or `nx test @mint-csv-converter/core` for just the converter), and typecheck with `pnpm typecheck`. See "Task orchestration (Nx)" below.
+Run the full workspace test suite from the repo root with `pnpm test` (or `nx test @mint-csv-converter/core` for just the converter), typecheck with `pnpm typecheck`, and lint with `pnpm lint`. See "Task orchestration (Nx)" below.
 
 ## Architecture
 
@@ -72,8 +72,8 @@ Input is always a manually-exported Citi CSV — Playwright-based export automat
 
 Nx sits on top of the pnpm workspace as a task runner/cache — it doesn't replace pnpm as the package manager. `nx.json` configures it for **local caching only** (no Nx Cloud).
 
-- Run tasks via `nx run <project>:<target>`, `nx run-many -t <target>`, or the root `package.json` scripts (`pnpm build`/`pnpm test`/`pnpm typecheck`, which just call `nx run-many -t <target>` for all three packages).
-- Targets are largely *inferred*, not hand-written: `@nx/js/typescript` infers `build`/`typecheck` from each package's `tsconfig.json` (project-referenced, `composite: true`, orchestrated via `tsc --build` from the root [tsconfig.json](tsconfig.json)); `@nx/vitest` infers `test` from each `vitest.config.ts`; `@nx/rollup` infers apps-script's `build` from `rollup.config.mjs`. `nx.json`'s `targetDefaults` make `build`/`test`/`typecheck` depend on `^build` (a project's own workspace dependencies get built first) — this is what makes automation's dependency on core's `dist/` automatic.
+- Run tasks via `nx run <project>:<target>`, `nx run-many -t <target>`, or the root `package.json` scripts (`pnpm build`/`pnpm test`/`pnpm typecheck`/`pnpm lint`, which just call `nx run-many -t <target>` for all three packages).
+- Targets are largely *inferred*, not hand-written: `@nx/js/typescript` infers `build`/`typecheck` from each package's `tsconfig.json` (project-referenced, `composite: true`, orchestrated via `tsc --build` from the root [tsconfig.json](tsconfig.json)); `@nx/vitest` infers `test` from each `vitest.config.ts`; `@nx/rollup` infers apps-script's `build` from `rollup.config.mjs`; `@nx/eslint` infers `lint` from the root [eslint.config.mjs](eslint.config.mjs) (type-aware `typescript-eslint` rules per package, via each package's own tsconfig — `tsconfig.eslint.json` for core/automation, since their real `tsconfig.json` excludes `*.spec.ts` from the build but lint still needs type info for tests). `nx.json`'s `targetDefaults` make `build`/`test`/`typecheck` depend on `^build` (a project's own workspace dependencies get built first) — this is what makes automation's dependency on core's `dist/` automatic.
 - A package only needs an explicit script in its own `package.json` when the inferred target is wrong or missing — e.g. `packages/apps-script`'s `typecheck` script (`tsc --noEmit`) exists because that package isn't part of the composite project-reference graph (its tsconfig sets `noEmit: true` for Rollup bundling instead), so native inference can't run it in `tsc --build` mode and would otherwise silently no-op it.
 - `packages/apps-script`'s `deploy` script (`nx build @mint-csv-converter/apps-script && clasp push`) is intentionally a plain script, not an Nx target — deploying to the live Apps Script project should stay a deliberate, manually-invoked action.
 - After changing a package's `tsconfig.json` dependencies/references, run `nx sync:check` (or just `nx sync`) if you see a "workspace is out of sync" error — this keeps TS project references consistent with the Nx project graph.

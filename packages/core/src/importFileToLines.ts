@@ -15,12 +15,12 @@ export class ImportFileToLines {
   getResults(): string[][] {
     console.log('Importing file, converting to lines');
     const content = readFileSync(this.file, 'utf-8');
-    const rows = parse(content) as string[][];
+    const rows = parse(content);
     if (rows.length === 0) {
       return rows;
     }
 
-    const header = rows[0]!.map((cell) => cell.trim().toLowerCase());
+    const header = rows[0].map((cell) => cell.trim().toLowerCase());
     const dateIndex = header.indexOf('date');
     const descriptionIndex = header.indexOf('description');
     const debitIndex = header.indexOf('debit');
@@ -28,11 +28,11 @@ export class ImportFileToLines {
 
     if (dateIndex === -1 || descriptionIndex === -1 || debitIndex === -1 || creditIndex === -1) {
       throw new Error(
-        `Expected a header row containing Date, Description, Debit, and Credit columns; got: ${rows[0]!.join(', ')}`,
+        `Expected a header row containing Date, Description, Debit, and Credit columns; got: ${rows[0].join(', ')}`,
       );
     }
 
-    const normalized: string[][] = [rows[0]!];
+    const normalized: string[][] = [rows[0]];
     for (const row of rows.slice(1)) {
       const date = row[dateIndex] ?? '';
       const description = row[descriptionIndex] ?? '';

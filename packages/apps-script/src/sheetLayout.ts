@@ -72,6 +72,7 @@ export function getTotalRowAnchor(sheet: Sheet): number | undefined {
   // from the original rather than "fixed"; this branch is unreachable in
   // normal use since a real "TOTAL OWING" row always exists.
   // @ts-expect-error - see note above
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- see note above
   alert('Could not find total row');
   return undefined;
 }
@@ -96,7 +97,7 @@ export function getParticipantCount(sheet: Sheet): number {
 export function getParticipantNames(sheet: Sheet): string[] {
   const participantCount = getParticipantCount(sheet);
   const headerRange = sheet.getRange(1, PARTICIPANT_COLUMN_OFFSET + 1, 1, participantCount);
-  return headerRange.getValues()[0];
+  return headerRange.getValues()[0] as string[];
 }
 
 /**
@@ -120,7 +121,7 @@ export function getParticipantIndexByName(participantNames: string[]): Record<st
  */
 export function isEquallySplitRow(sheet: Sheet, row: number): boolean {
   const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
-  const val = range.getValue();
+  const val = range.getValue() as string;
   return val == SPLIT_TYPE_EQUALLY;
 }
 
@@ -131,7 +132,7 @@ export function isEquallySplitRow(sheet: Sheet, row: number): boolean {
  */
 export function isVariablySplitRow(sheet: Sheet, row: number): boolean {
   const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
-  const val = range.getValue();
+  const val = range.getValue() as string;
   return val == SPLIT_TYPE_VARIABLY;
 }
 
@@ -146,7 +147,7 @@ export function countEquallySplitParticipants(sheet: Sheet, row: number, partici
   for (let i = 0; i < participantCount; i++) {
     const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
     const range = sheet.getRange(row, col);
-    const val = range.getValue();
+    const val = range.getValue() as boolean;
     if (val == true) {
       count++;
     }
@@ -165,7 +166,7 @@ export function sumVariableSplitShares(sheet: Sheet, row: number, participantCou
   for (let i = 0; i < participantCount; i++) {
     const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
     const range = sheet.getRange(row, col);
-    const val = range.getValue();
+    const val = range.getValue() as number;
     total += val;
   }
   return total;
@@ -179,7 +180,7 @@ export function sumVariableSplitShares(sheet: Sheet, row: number, participantCou
  */
 export function getPayeeNamesForRows(sheet: Sheet, totalRowAnchor: number): string[] {
   const payeeRange = sheet.getRange(2, PAYEE_COLUMN, totalRowAnchor - 1, 1);
-  const payeeValues = payeeRange.getValues();
+  const payeeValues = payeeRange.getValues() as string[][];
   const payeeNames: string[] = [];
   for (let i = 0; i < payeeValues.length; i++) {
     payeeNames.push(payeeValues[i][0]);

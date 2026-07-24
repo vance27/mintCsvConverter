@@ -90,7 +90,7 @@ export class CsvConverterFactory {
     const invalidLines: TransactionRow[] = [];
 
     for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i]!;
+      const line = lines[i];
       if (i === 0) {
         console.log('Skipping header row');
         continue;
@@ -98,11 +98,11 @@ export class CsvConverterFactory {
 
       if (this.isValidLine(line, name)) {
         if (this.isVariableSplit(line)) {
-          result.push([`${line[1]} ${line[0]}`, name, line[3]!, 'Variably', '%', '%']);
+          result.push([`${line[1]} ${line[0]}`, name, line[3], 'Variably', '%', '%']);
         } else {
           // Covers ordinary transactions as well as splitRulesDict.SHARED
           // vendors (known joint bills) — both split evenly.
-          result.push([`${line[1]} ${line[0]}`, name, line[3]!, 'Equally', 'TRUE', 'TRUE']);
+          result.push([`${line[1]} ${line[0]}`, name, line[3], 'Equally', 'TRUE', 'TRUE']);
         }
       } else {
         invalidLines.push(line);
@@ -110,7 +110,7 @@ export class CsvConverterFactory {
     }
 
     if (this.sorted) {
-      return [[...result].sort((a, b) => (a[0]! < b[0]! ? -1 : a[0]! > b[0]! ? 1 : 0)), invalidLines];
+      return [[...result].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)), invalidLines];
     }
     return [result, invalidLines];
   }
@@ -120,7 +120,7 @@ export class CsvConverterFactory {
     if (variableLines === undefined) {
       throw new Error('No variable lines');
     }
-    return includesAnyCaseInsensitive(line[1]!, variableLines);
+    return includesAnyCaseInsensitive(line[1], variableLines);
   }
 
   isValidLine(line: TransactionRow, name: string): boolean {
@@ -128,7 +128,7 @@ export class CsvConverterFactory {
     if (excludedLines === undefined) {
       throw new Error(`No personal exclusions configured for name: ${name}`);
     }
-    return !includesAnyCaseInsensitive(line[1]!, excludedLines);
+    return !includesAnyCaseInsensitive(line[1], excludedLines);
   }
 }
 

@@ -91,7 +91,7 @@ describe('runSync', () => {
     expect(summary.skippedAsAlreadySynced).toBe(1);
     // Both remaining rows fall in the same period (06/26), so one grouped call.
     expect(addTransactionsForPeriod.mock.calls.length).toBe(1);
-    const requestArg = addTransactionsForPeriod.mock.calls[0]![0] as { rows: string[][] };
+    const requestArg = addTransactionsForPeriod.mock.calls[0][0] as { rows: string[][] };
     expect(requestArg.rows.length).toBe(2);
   });
 
@@ -107,7 +107,7 @@ describe('runSync', () => {
 
     await runSync({ inputFile: 'x.csv', name: 'Brian', syncStateFile: 'state.json' }, deps);
 
-    const requestArg = addTransactionsForPeriod.mock.calls[0]![0] as { rows: string[][] };
+    const requestArg = addTransactionsForPeriod.mock.calls[0][0] as { rows: string[][] };
     expect(requestArg.rows).toEqual([['Costco Wholesale 06/20/2026', 'Brian', '150.00', 'Variably']]);
   });
 });

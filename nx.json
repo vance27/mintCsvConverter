@@ -13,6 +13,10 @@
     "typecheck": {
       "cache": true,
       "dependsOn": ["^build"]
+    },
+    "lint": {
+      "cache": true,
+      "dependsOn": ["^build"]
     }
   },
   "plugins": [
@@ -39,6 +43,12 @@
       "plugin": "@nx/rollup/plugin",
       "options": {
         "buildTargetName": "build"
+      }
+    },
+    {
+      "plugin": "@nx/eslint/plugin",
+      "options": {
+        "targetName": "lint"
       }
     }
   ]

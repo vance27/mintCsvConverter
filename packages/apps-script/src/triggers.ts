@@ -43,12 +43,12 @@ export function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
 /**
  * Placeholder for header-row edit handling — currently a no-op.
  *
- * @param sheet - The sheet the edit occurred on.
- * @param row - The edited row number (always 1 for a header edit).
- * @param col - The edited column number.
- * @param val - The cell's new value.
+ * @param _sheet - The sheet the edit occurred on.
+ * @param _row - The edited row number (always 1 for a header edit).
+ * @param _col - The edited column number.
+ * @param _val - The cell's new value.
  */
-export function onHeaderChange(sheet: Sheet, row: number, col: number, val: string | undefined): void {
+export function onHeaderChange(_sheet: Sheet, _row: number, _col: number, _val: string | undefined): void {
   //TODO(SK) something, probably.
   return;
 }
@@ -59,9 +59,9 @@ export function onHeaderChange(sheet: Sheet, row: number, col: number, val: stri
  * @param sheet - The sheet the edit occurred on.
  * @param row - The edited row number.
  * @param col - The edited column number.
- * @param val - The cell's new value.
+ * @param _val - The cell's new value.
  */
-export function onDataChange(sheet: Sheet, row: number, col: number, val: string | undefined): void {
+export function onDataChange(sheet: Sheet, row: number, col: number, _val: string | undefined): void {
   Logger.log('onDataChange');
 
   if (col == SPLIT_TYPE_COLUMN) {

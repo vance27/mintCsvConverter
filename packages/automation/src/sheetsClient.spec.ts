@@ -22,10 +22,10 @@ describe('SheetsClient', () => {
     expect(result).toEqual({ sheetName: 'Brian 07/26', rowsAdded: 2 });
     expect(fetchMock.mock.calls.length).toBe(1);
 
-    const call = fetchMock.mock.calls[0]!;
+    const call = fetchMock.mock.calls[0];
     expect(call[0]).toBe('https://example.com/exec');
     const init = call[1] as RequestInit;
-    const body = JSON.parse(init.body as string);
+    const body = JSON.parse(init.body as string) as unknown;
     expect(body).toEqual({
       token: 'secret',
       payerName: 'Brian',
@@ -64,19 +64,19 @@ describe('loadSheetsClientConfigFromEnv', () => {
     const config = loadSheetsClientConfigFromEnv({
       SHEETS_WEBAPP_URL: 'https://example.com/exec',
       SHEETS_SYNC_TOKEN: 'secret',
-    } as NodeJS.ProcessEnv);
+    });
     expect(config).toEqual({ webAppUrl: 'https://example.com/exec', token: 'secret' });
   });
 
   it('throws when SHEETS_WEBAPP_URL is missing', () => {
-    expect(() => loadSheetsClientConfigFromEnv({ SHEETS_SYNC_TOKEN: 'secret' } as NodeJS.ProcessEnv)).toThrow(
+    expect(() => loadSheetsClientConfigFromEnv({ SHEETS_SYNC_TOKEN: 'secret' })).toThrow(
       /SHEETS_WEBAPP_URL/,
     );
   });
 
   it('throws when SHEETS_SYNC_TOKEN is missing', () => {
     expect(() =>
-      loadSheetsClientConfigFromEnv({ SHEETS_WEBAPP_URL: 'https://example.com/exec' } as NodeJS.ProcessEnv),
+      loadSheetsClientConfigFromEnv({ SHEETS_WEBAPP_URL: 'https://example.com/exec' }),
     ).toThrow(/SHEETS_SYNC_TOKEN/);
   });
 });

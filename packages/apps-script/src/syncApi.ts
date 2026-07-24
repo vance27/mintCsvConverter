@@ -33,7 +33,7 @@ export const SYNC_TOKEN_PROPERTY_KEY = 'SYNC_TOKEN';
  */
 export function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
   try {
-    const payload: AddTransactionsPayload = JSON.parse(e.postData.contents);
+    const payload = JSON.parse(e.postData.contents) as AddTransactionsPayload;
 
     const expectedToken = PropertiesService.getScriptProperties().getProperty(SYNC_TOKEN_PROPERTY_KEY);
     if (!expectedToken || payload.token !== expectedToken) {
