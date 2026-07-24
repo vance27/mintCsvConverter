@@ -1,11 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2021",
-    "module": "ES2020",
+    "module": "ES2022",
     "moduleResolution": "Bundler",
     "lib": ["ES2021"],
     "strict": true,
-    "types": ["google-apps-script"],
+    "types": ["google-apps-script", "node"],
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true
