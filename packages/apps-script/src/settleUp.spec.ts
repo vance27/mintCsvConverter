@@ -1,14 +1,6 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
-import { installFakeGasGlobals } from './testing/fakeGasGlobals.js';
+import { describe, it, expect } from 'vitest';
 import { FakeSheet } from './testing/fakeSheet.js';
-
-// settleUp.ts imports from sheetLayout.ts, whose CHECKBOX_VALIDATION/
-// PERCENT_VALIDATION constants call SpreadsheetApp.newDataValidation() at
-// module load time — globals must be installed before the dynamic import.
-installFakeGasGlobals();
-
-const {
+import {
   createZeroMatrix,
   buildDebtMatrix,
   indexOfMin,
@@ -17,11 +9,11 @@ const {
   computeSettlementPayments,
   writeSettlementPayments,
   recalculateSettleUp,
-} = await import('./settleUp.js');
+} from './settleUp.js';
 
 describe('createZeroMatrix', () => {
   it('returns a size x size matrix of zeros', () => {
-    assert.deepEqual(createZeroMatrix(3), [
+    expect(createZeroMatrix(3)).toEqual([
       [0, 0, 0],
       [0, 0, 0],
       [0, 0, 0],
@@ -31,8 +23,8 @@ describe('createZeroMatrix', () => {
 
 describe('indexOfMin / indexOfMax', () => {
   it('finds the index of the smallest and largest values', () => {
-    assert.equal(indexOfMin([3, -1, 5]), 1);
-    assert.equal(indexOfMax([3, -1, 5]), 2);
+    expect(indexOfMin([3, -1, 5])).toBe(1);
+    expect(indexOfMax([3, -1, 5])).toBe(2);
   });
 });
 
@@ -57,7 +49,7 @@ describe('buildDebtMatrix', () => {
 
     const debtMatrix = buildDebtMatrix(sheet.asSheet(), participantNames, participantIndexByName, 2, 3);
 
-    assert.deepEqual(debtMatrix, [
+    expect(debtMatrix).toEqual([
       [0, 60], // Brian owes Patrice $60 (Costco)
       [15, 0], // Patrice owes Brian $15 (Chipotle)
     ]);
@@ -73,7 +65,7 @@ describe('simplifyDebts', () => {
     const payments = simplifyDebts(new FakeSheet([]).asSheet(), debtMatrix, ['Brian', 'Patrice'], { Brian: 0, Patrice: 1 }, 2, 3);
 
     // Brian (index 0) pays Patrice (index 1) the net $45.
-    assert.deepEqual(payments, [[0, 1, 45]]);
+    expect(payments).toEqual([[0, 1, 45]]);
   });
 });
 
@@ -85,7 +77,7 @@ describe('computeSettlementPayments', () => {
       [15, 0],
     ];
     const payments = computeSettlementPayments(sheet.asSheet(), debtMatrix, ['Brian', 'Patrice'], { Brian: 0, Patrice: 1 }, 2, 3);
-    assert.deepEqual(payments, [[0, 1, 45]]);
+    expect(payments).toEqual([[0, 1, 45]]);
   });
 
   it('returns every non-zero pairwise debt verbatim when the toggle is unchecked', () => {
@@ -95,7 +87,7 @@ describe('computeSettlementPayments', () => {
       [15, 0],
     ];
     const payments = computeSettlementPayments(sheet.asSheet(), debtMatrix, ['Brian', 'Patrice'], { Brian: 0, Patrice: 1 }, 2, 3);
-    assert.deepEqual(payments, [
+    expect(payments).toEqual([
       [0, 1, 60],
       [1, 0, 15],
     ]);
@@ -108,7 +100,7 @@ describe('writeSettlementPayments', () => {
     writeSettlementPayments(sheet.asSheet(), [[0, 1, 45]], ['Brian', 'Patrice'], { Brian: 0, Patrice: 1 }, 2, 3);
 
     // Row 4 (totalRowAnchor + 1), column E (Brian, PARTICIPANT_COLUMN_OFFSET + 0 + 1).
-    assert.equal(sheet.grid[3][4], 'Patrice $45.00');
+    expect(sheet.grid[3][4]).toBe('Patrice $45.00');
   });
 });
 
@@ -117,7 +109,7 @@ describe('recalculateSettleUp', () => {
     const sheet = buildTwoTransactionSheet(true);
     recalculateSettleUp(sheet.asSheet());
 
-    assert.equal(sheet.grid[3][4], 'Patrice $45.00');
+    expect(sheet.grid[3][4]).toBe('Patrice $45.00');
   });
 
   it('writes the verbatim (non-simplified) payments when the toggle is unchecked', () => {
@@ -126,7 +118,7 @@ describe('recalculateSettleUp', () => {
 
     // Brian's column (E) gets what Brian owes Patrice; Patrice's column (F)
     // gets what Patrice owes Brian.
-    assert.equal(sheet.grid[3][4], 'Patrice $60.00');
-    assert.equal(sheet.grid[3][5], 'Brian $15.00');
+    expect(sheet.grid[3][4]).toBe('Patrice $60.00');
+    expect(sheet.grid[3][5]).toBe('Brian $15.00');
   });
 });

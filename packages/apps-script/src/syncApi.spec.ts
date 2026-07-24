@@ -1,17 +1,11 @@
-import { describe, it, beforeEach } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  installFakeGasGlobals,
   setActiveSpreadsheetForTest,
   setScriptPropertyForTest,
   resetScriptPropertiesForTest,
 } from './testing/fakeGasGlobals.js';
 import { FakeSheet, FakeSpreadsheet } from './testing/fakeSheet.js';
-
-installFakeGasGlobals();
-
-const { doPost, jsonResponse, addTransactionsForPeriod, findOrCreateSheet, findTotalOwingRowIndex } =
-  await import('./syncApi.js');
+import { doPost, jsonResponse, addTransactionsForPeriod, findOrCreateSheet, findTotalOwingRowIndex } from './syncApi.js';
 
 const TEMPLATE_ROWS = [
   ['Description', 'Who Paid', 'Amount', 'How to split', 'Brian', 'Patrice'], // row 1
@@ -22,12 +16,12 @@ const TEMPLATE_ROWS = [
 describe('findTotalOwingRowIndex', () => {
   it('returns the real row number of the "TOTAL OWING" marker', () => {
     const sheet = new FakeSheet(TEMPLATE_ROWS.map((row) => [...row]));
-    assert.equal(findTotalOwingRowIndex(sheet.asSheet()), 2);
+    expect(findTotalOwingRowIndex(sheet.asSheet())).toBe(2);
   });
 
   it('throws when no marker is found', () => {
     const sheet = new FakeSheet([['Description', 'Who Paid', 'Amount', 'How to split']]);
-    assert.throws(() => findTotalOwingRowIndex(sheet.asSheet()), /Could not find "TOTAL OWING" row/);
+    expect(() => findTotalOwingRowIndex(sheet.asSheet())).toThrow(/Could not find "TOTAL OWING" row/);
   });
 });
 
@@ -38,7 +32,7 @@ describe('findOrCreateSheet', () => {
 
     const found = findOrCreateSheet(spreadsheet.asSpreadsheet(), 'Brian 07/26');
 
-    assert.equal(found, existing.asSheet());
+    expect(found).toBe(existing.asSheet());
   });
 
   it('creates a new sheet by duplicating "DUPLICATE ME" when none exists', () => {
@@ -49,18 +43,17 @@ describe('findOrCreateSheet', () => {
     // interface; cast back to our fake to inspect its backing grid.
     const created = findOrCreateSheet(spreadsheet.asSpreadsheet(), 'Brian 07/26') as unknown as FakeSheet;
 
-    assert.equal(created.getName(), 'Brian 07/26');
+    expect(created.getName()).toBe('Brian 07/26');
     // Preserves the template's rows (styling/validation is preserved by
     // the real copyTo(); here we can only verify the data came along).
-    assert.deepEqual(created.grid[0], TEMPLATE_ROWS[0]);
+    expect(created.grid[0]).toEqual(TEMPLATE_ROWS[0]);
     // The new sheet is now findable by its final name.
-    assert.equal(spreadsheet.getSheetByName('Brian 07/26'), created);
+    expect(spreadsheet.getSheetByName('Brian 07/26')).toBe(created);
   });
 
   it('throws when there is no existing sheet and no "DUPLICATE ME" template', () => {
     const spreadsheet = new FakeSpreadsheet();
-    assert.throws(
-      () => findOrCreateSheet(spreadsheet.asSpreadsheet(), 'Brian 07/26'),
+    expect(() => findOrCreateSheet(spreadsheet.asSpreadsheet(), 'Brian 07/26')).toThrow(
       /Template sheet "DUPLICATE ME" not found/,
     );
   });
@@ -76,22 +69,17 @@ describe('addTransactionsForPeriod', () => {
       ['Chipotle Mexican Grill 07/01/2026', 'Brian', '28.18', 'Equally'],
     ]);
 
-    assert.deepEqual(result, { sheetName: 'Brian 07/26', rowsAdded: 1 });
+    expect(result).toEqual({ sheetName: 'Brian 07/26', rowsAdded: 1 });
 
     const sheet = spreadsheet.getSheetByName('Brian 07/26');
-    assert.ok(sheet);
+    expect(sheet).toBeTruthy();
     // Inserted row 2: the transaction data, plus checkbox defaults applied
     // by onSplitTypeChanged.
-    assert.deepEqual(sheet!.grid[1].slice(0, 4), [
-      'Chipotle Mexican Grill 07/01/2026',
-      'Brian',
-      '28.18',
-      'Equally',
-    ]);
-    assert.equal(sheet!.grid[1][4], true);
-    assert.equal(sheet!.grid[1][5], true);
+    expect(sheet!.grid[1].slice(0, 4)).toEqual(['Chipotle Mexican Grill 07/01/2026', 'Brian', '28.18', 'Equally']);
+    expect(sheet!.grid[1][4]).toBe(true);
+    expect(sheet!.grid[1][5]).toBe(true);
     // TOTAL OWING marker got pushed down to row 3 (index 2).
-    assert.equal(sheet!.grid[2][3], 'TOTAL OWING');
+    expect(sheet!.grid[2][3]).toBe('TOTAL OWING');
 
     setActiveSpreadsheetForTest(undefined);
   });
@@ -103,7 +91,7 @@ describe('addTransactionsForPeriod', () => {
 
     const result = addTransactionsForPeriod('Brian', '07/26', []);
 
-    assert.deepEqual(result, { sheetName: 'Brian 07/26', rowsAdded: 0 });
+    expect(result).toEqual({ sheetName: 'Brian 07/26', rowsAdded: 0 });
 
     setActiveSpreadsheetForTest(undefined);
   });
@@ -112,8 +100,8 @@ describe('addTransactionsForPeriod', () => {
 describe('jsonResponse', () => {
   it('wraps a value as a JSON text output', () => {
     const output = jsonResponse({ ok: true, result: { sheetName: 'x', rowsAdded: 1 } });
-    assert.equal(output.getContent(), '{"ok":true,"result":{"sheetName":"x","rowsAdded":1}}');
-    assert.equal(output.getMimeType(), 'application/json');
+    expect(output.getContent()).toBe('{"ok":true,"result":{"sheetName":"x","rowsAdded":1}}');
+    expect(output.getMimeType()).toBe('application/json');
   });
 });
 
@@ -129,21 +117,21 @@ describe('doPost', () => {
 
   it('rejects a request with no token configured', () => {
     const response = doPost(makeEvent({ token: 'whatever', payerName: 'Brian', periodLabel: '07/26', rows: [] }));
-    assert.deepEqual(JSON.parse(response.getContent()), { ok: false, error: 'Unauthorized' });
+    expect(JSON.parse(response.getContent())).toEqual({ ok: false, error: 'Unauthorized' });
   });
 
   it('rejects a request with the wrong token', () => {
     setScriptPropertyForTest('SYNC_TOKEN', 'correct-token');
     const response = doPost(makeEvent({ token: 'wrong-token', payerName: 'Brian', periodLabel: '07/26', rows: [] }));
-    assert.deepEqual(JSON.parse(response.getContent()), { ok: false, error: 'Unauthorized' });
+    expect(JSON.parse(response.getContent())).toEqual({ ok: false, error: 'Unauthorized' });
   });
 
   it('rejects a request missing required fields', () => {
     setScriptPropertyForTest('SYNC_TOKEN', 'correct-token');
     const response = doPost(makeEvent({ token: 'correct-token', payerName: 'Brian' }));
     const body = JSON.parse(response.getContent());
-    assert.equal(body.ok, false);
-    assert.match(body.error, /Expected \{ token, payerName, periodLabel, rows \}/);
+    expect(body.ok).toBe(false);
+    expect(body.error).toMatch(/Expected \{ token, payerName, periodLabel, rows \}/);
   });
 
   it('processes a valid request and returns the result', () => {
@@ -161,7 +149,7 @@ describe('doPost', () => {
       }),
     );
 
-    assert.deepEqual(JSON.parse(response.getContent()), {
+    expect(JSON.parse(response.getContent())).toEqual({
       ok: true,
       result: { sheetName: 'Brian 07/26', rowsAdded: 1 },
     });
@@ -171,11 +159,9 @@ describe('doPost', () => {
     setScriptPropertyForTest('SYNC_TOKEN', 'correct-token');
     // No active spreadsheet configured -> addTransactionsForPeriod's call
     // to SpreadsheetApp.getActiveSpreadsheet() throws.
-    const response = doPost(
-      makeEvent({ token: 'correct-token', payerName: 'Brian', periodLabel: '07/26', rows: [] }),
-    );
+    const response = doPost(makeEvent({ token: 'correct-token', payerName: 'Brian', periodLabel: '07/26', rows: [] }));
     const body = JSON.parse(response.getContent());
-    assert.equal(body.ok, false);
-    assert.match(body.error, /setActiveSpreadsheetForTest/);
+    expect(body.ok).toBe(false);
+    expect(body.error).toMatch(/setActiveSpreadsheetForTest/);
   });
 });
