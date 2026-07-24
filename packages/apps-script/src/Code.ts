@@ -1,24 +1,34 @@
-/*
- * Hello there, inquisitive  friend.
- *
- * Hacked by Sam Killin, August 2018.
- * www.homies.rent
- * help@homies.rent
- */
-
+/** Shorthand for the verbose GoogleAppsScript.Spreadsheet.Sheet type. */
 type Sheet = GoogleAppsScript.Spreadsheet.Sheet;
+/** Shorthand for the verbose GoogleAppsScript.Spreadsheet.Spreadsheet type. */
 type Spreadsheet = GoogleAppsScript.Spreadsheet.Spreadsheet;
 
-const VARIABLY_LABEL = 'Variably';
-const EQUALLY_LABEL = 'Equally';
-const TENANT_COLUMN_OFFSET = 4;
+/** Value of the "How to split" column for an evenly-split transaction. */
+const SPLIT_TYPE_EQUALLY = 'Equally';
+/** Value of the "How to split" column for a percentage-split transaction. */
+const SPLIT_TYPE_VARIABLY = 'Variably';
+
+// Sheet layout — column numbers are 1-indexed, matching Sheets' own
+// indexing. Columns after PARTICIPANT_COLUMN_OFFSET hold one column per
+// participant (e.g. "Brian", "Patrice"), named by the header row.
 const PAYEE_COLUMN = 2;
 const AMOUNT_COLUMN = 3;
 const SPLIT_TYPE_COLUMN = 4;
-const ROWS_TO_SEARCH_TOTAL = 1000;
-const CHECKBOX_VALIDATOR = buildCheckboxValidator();
-const PERCENT_VALIDATOR = buildPercentValidator();
+const PARTICIPANT_COLUMN_OFFSET = 4;
 
+/** How many rows (from row 2) to scan when looking for the "TOTAL OWING" marker. */
+const MAX_ROWS_TO_SEARCH = 1000;
+
+const CHECKBOX_VALIDATION = buildCheckboxValidation();
+const PERCENT_VALIDATION = buildPercentValidation();
+
+/**
+ * Simple trigger Apps Script calls on every edit made directly in the
+ * sheet's UI (does not fire for edits made via the Sheets API or another
+ * script — see addTransactionsForPeriod below for that path).
+ *
+ * @param e - The edit event Apps Script provides to onEdit simple triggers.
+ */
 function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
   Logger.log('Starting Edit');
   const row = e.range.getRow();
@@ -31,14 +41,30 @@ function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
   } else {
     onDataChange(sheet, row, col, val);
   }
-  calculate(sheet);
+  recalculateSettleUp(sheet);
 }
 
+/**
+ * Placeholder for header-row edit handling — currently a no-op.
+ *
+ * @param sheet - The sheet the edit occurred on.
+ * @param row - The edited row number (always 1 for a header edit).
+ * @param col - The edited column number.
+ * @param val - The cell's new value.
+ */
 function onHeaderChange(sheet: Sheet, row: number, col: number, val: string | undefined): void {
   //TODO(SK) something, probably.
   return;
 }
 
+/**
+ * Routes a data-row edit to the split-type handler when column D changed.
+ *
+ * @param sheet - The sheet the edit occurred on.
+ * @param row - The edited row number.
+ * @param col - The edited column number.
+ * @param val - The cell's new value.
+ */
 function onDataChange(sheet: Sheet, row: number, col: number, val: string | undefined): void {
   Logger.log('onDataChange');
 
@@ -47,53 +73,102 @@ function onDataChange(sheet: Sheet, row: number, col: number, val: string | unde
   }
 }
 
+/**
+ * Applies the default value + data validation for every participant column
+ * on `row`, based on that row's "How to split" value: a checkbox defaulted
+ * to checked for "Equally", or an even percentage share for "Variably".
+ * Called both from onEdit (a human picking a dropdown value) and from
+ * addTransactionsForPeriod below (a row inserted via the sync API).
+ *
+ * @param sheet - The sheet containing the row.
+ * @param row - The row whose "How to split" value changed.
+ */
 function onSplitTypeChanged(sheet: Sheet, row: number): void {
   Logger.log('onSplitTypeChanged');
 
-  const numTenants = getNumberOfTenants(sheet);
+  const participantCount = getParticipantCount(sheet);
 
-  const isEqual = isEqualPaymentRow(sheet, row);
-  const isVariable = isVariablePaymentRow(sheet, row);
+  const isEquallySplit = isEquallySplitRow(sheet, row);
+  const isVariablySplit = isVariablySplitRow(sheet, row);
 
-  for (let i = 0; i < numTenants; i++) {
-    const col = TENANT_COLUMN_OFFSET + i + 1;
+  for (let i = 0; i < participantCount; i++) {
+    const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
     const range = sheet.getRange(row, col);
 
     // Update this row col to be a variable percentage split
-    if (isVariable) {
-      range.setValue(100 / numTenants + '%');
-      range.setDataValidation(PERCENT_VALIDATOR);
+    if (isVariablySplit) {
+      range.setValue(100 / participantCount + '%');
+      range.setDataValidation(PERCENT_VALIDATION);
       // Update this row col to be an equal, checkbox togglerable split
-    } else if (isEqual) {
+    } else if (isEquallySplit) {
       range.setValue(true);
-      range.setDataValidation(CHECKBOX_VALIDATOR);
+      range.setDataValidation(CHECKBOX_VALIDATION);
     }
   }
 }
 
-function getNumberOfTenants(sheet: Sheet): number {
+/**
+ * Number of participant columns, derived from how far the header row extends.
+ *
+ * @param sheet - The sheet to inspect.
+ * @returns The number of participant columns (e.g. 2 for Brian + Patrice).
+ */
+function getParticipantCount(sheet: Sheet): number {
   const lastColumn = sheet.getLastColumn();
-  return lastColumn - TENANT_COLUMN_OFFSET;
+  return lastColumn - PARTICIPANT_COLUMN_OFFSET;
 }
 
-function getTenantNames(sheet: Sheet): string[] {
-  const numTenants = getNumberOfTenants(sheet);
-  const headerRange = sheet.getRange(1, TENANT_COLUMN_OFFSET + 1, 1, numTenants);
+/**
+ * Participant names, read from the header row's participant columns.
+ *
+ * @param sheet - The sheet to inspect.
+ * @returns Participant names in column order, e.g. ["Brian", "Patrice"].
+ */
+function getParticipantNames(sheet: Sheet): string[] {
+  const participantCount = getParticipantCount(sheet);
+  const headerRange = sheet.getRange(1, PARTICIPANT_COLUMN_OFFSET + 1, 1, participantCount);
   return headerRange.getValues()[0];
 }
 
-function buildCheckboxValidator(): GoogleAppsScript.Spreadsheet.DataValidation {
+/**
+ * Builds the data validation rule that renders a cell as a checkbox.
+ *
+ * @returns A checkbox data validation rule.
+ */
+function buildCheckboxValidation(): GoogleAppsScript.Spreadsheet.DataValidation {
   return SpreadsheetApp.newDataValidation().requireCheckbox().build();
 }
 
-function buildPercentValidator(): GoogleAppsScript.Spreadsheet.DataValidation {
+/**
+ * Builds the data validation rule that requires a cell's text to look like
+ * a percentage, e.g. "50%".
+ *
+ * @returns A formula-based data validation rule for percentage strings.
+ */
+function buildPercentValidation(): GoogleAppsScript.Spreadsheet.DataValidation {
   const formula =
     '=REGEXMATCH(TO_TEXT(INDIRECT(CONCATENATE("R", TO_TEXT(ROW()), "C", TO_TEXT(COLUMN())), FALSE)), "^\\d+(?:\\.\\d+)?%$")';
   return SpreadsheetApp.newDataValidation().requireFormulaSatisfied(formula).build();
 }
 
-function getTotalRow(sheet: Sheet): number | undefined {
-  const range = sheet.getRange(2, TENANT_COLUMN_OFFSET, ROWS_TO_SEARCH_TOTAL, 1);
+/**
+ * Scans down column D from row 2 for the literal "TOTAL OWING" marker and
+ * returns its row number — 1, used as a computation anchor by the
+ * settle-up math further down this file (buildDebtMatrix,
+ * computeSettlementPayments, writeSettlementPayments all take this same
+ * off-by-one value, not the marker's real row number).
+ *
+ * Deliberately separate from findTotalOwingRowIndex near the bottom of
+ * this file, which returns the real row number and is used only to decide
+ * where to insert new rows — reusing that value here would be wrong.
+ *
+ * @param sheet - The sheet to search.
+ * @returns The off-by-one row anchor, or `undefined` if no "TOTAL OWING"
+ *   row was found — unreachable in normal use, since a real one always
+ *   exists; see the `alert` note inside.
+ */
+function getTotalRowAnchor(sheet: Sheet): number | undefined {
+  const range = sheet.getRange(2, PARTICIPANT_COLUMN_OFFSET, MAX_ROWS_TO_SEARCH, 1);
   const values = range.getValues();
   for (let i = 0; i < values.length; i++) {
     // Relies on JS's array-to-string coercion (a single-element array
@@ -112,35 +187,58 @@ function getTotalRow(sheet: Sheet): number | undefined {
   return undefined;
 }
 
-function zeros(size: number): number[][] {
-  const array: number[][] = [];
+/**
+ * Returns a square matrix filled with zeros.
+ *
+ * @param size - Width and height of the matrix.
+ * @returns A `size` x `size` matrix, every cell 0.
+ */
+function createZeroMatrix(size: number): number[][] {
+  const matrix: number[][] = [];
   for (let i = 0; i < size; i++) {
-    array.push([]);
+    matrix.push([]);
     for (let j = 0; j < size; j++) {
-      array[i].push(0);
+      matrix[i].push(0);
     }
   }
-  return array;
+  return matrix;
 }
 
-function getTenantIndexes(tenantNames: string[]): Record<string, number> {
-  const tenantIndexes: Record<string, number> = {};
-  for (let i = 0; i < tenantNames.length; i++) {
-    tenantIndexes[tenantNames[i]] = i;
+/**
+ * Maps each participant name to its position in the participant column list.
+ *
+ * @param participantNames - Participant names in column order.
+ * @returns A lookup from participant name to column index, e.g. `{ Brian: 0, Patrice: 1 }`.
+ */
+function getParticipantIndexByName(participantNames: string[]): Record<string, number> {
+  const participantIndexByName: Record<string, number> = {};
+  for (let i = 0; i < participantNames.length; i++) {
+    participantIndexByName[participantNames[i]] = i;
   }
-  return tenantIndexes;
+  return participantIndexByName;
 }
 
-function isEqualPaymentRow(sheet: Sheet, row: number): boolean {
+/**
+ * @param sheet - The sheet containing the row.
+ * @param row - The row to check.
+ * @returns Whether `row`'s "How to split" value is "Equally".
+ */
+function isEquallySplitRow(sheet: Sheet, row: number): boolean {
   const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
   const val = range.getValue();
-  return val == EQUALLY_LABEL;
+  return val == SPLIT_TYPE_EQUALLY;
 }
 
-function numEqualSplitting(sheet: Sheet, row: number, numTenants: number): number {
+/**
+ * @param sheet - The sheet containing the row.
+ * @param row - The row to check.
+ * @param participantCount - How many participant columns to scan.
+ * @returns How many participant checkboxes are checked (true) on an equally-split row.
+ */
+function countEquallySplitParticipants(sheet: Sheet, row: number, participantCount: number): number {
   let count = 0;
-  for (let i = 0; i < numTenants; i++) {
-    const col = TENANT_COLUMN_OFFSET + i + 1;
+  for (let i = 0; i < participantCount; i++) {
+    const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
     const range = sheet.getRange(row, col);
     const val = range.getValue();
     if (val == true) {
@@ -150,16 +248,27 @@ function numEqualSplitting(sheet: Sheet, row: number, numTenants: number): numbe
   return count;
 }
 
-function isVariablePaymentRow(sheet: Sheet, row: number): boolean {
+/**
+ * @param sheet - The sheet containing the row.
+ * @param row - The row to check.
+ * @returns Whether `row`'s "How to split" value is "Variably".
+ */
+function isVariablySplitRow(sheet: Sheet, row: number): boolean {
   const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
   const val = range.getValue();
-  return val == VARIABLY_LABEL;
+  return val == SPLIT_TYPE_VARIABLY;
 }
 
-function calculateTotalVariable(sheet: Sheet, row: number, numTenants: number): number {
+/**
+ * @param sheet - The sheet containing the row.
+ * @param row - The row to sum.
+ * @param participantCount - How many participant columns to scan.
+ * @returns Sum of the participant-column share values on a variably-split row (should total ~100).
+ */
+function sumVariableSplitShares(sheet: Sheet, row: number, participantCount: number): number {
   let total = 0;
-  for (let i = 0; i < numTenants; i++) {
-    const col = TENANT_COLUMN_OFFSET + i + 1;
+  for (let i = 0; i < participantCount; i++) {
+    const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
     const range = sheet.getRange(row, col);
     const val = range.getValue();
     total += val;
@@ -167,210 +276,306 @@ function calculateTotalVariable(sheet: Sheet, row: number, numTenants: number): 
   return total;
 }
 
-function getOweeNames(sheet: Sheet, totalRow: number): string[] {
-  const oweeRange = sheet.getRange(2, PAYEE_COLUMN, totalRow - 1, 1);
-  const oweeValues = oweeRange.getValues();
-  const owees: string[] = [];
-  for (let i = 0; i < oweeValues.length; i++) {
-    owees.push(oweeValues[i][0]);
+/**
+ * @param sheet - The sheet to read.
+ * @param totalRowAnchor - The off-by-one anchor from getTotalRowAnchor.
+ * @returns The "Who Paid" (payee) name for every transaction row, from row
+ *   2 up to the settle-up anchor, in row order.
+ */
+function getPayeeNamesForRows(sheet: Sheet, totalRowAnchor: number): string[] {
+  const payeeRange = sheet.getRange(2, PAYEE_COLUMN, totalRowAnchor - 1, 1);
+  const payeeValues = payeeRange.getValues();
+  const payeeNames: string[] = [];
+  for (let i = 0; i < payeeValues.length; i++) {
+    payeeNames.push(payeeValues[i][0]);
   }
-  return owees;
+  return payeeNames;
 }
 
-function buildGraph(
+/**
+ * Builds a participantCount x participantCount debt matrix from every
+ * transaction row, where debtMatrix[payerIndex][payeeIndex] is the total
+ * amount payerIndex owes payeeIndex across all transactions. For each row:
+ * an equally-split amount is divided evenly among the checked participants;
+ * a variably-split amount is divided proportionally to each participant's
+ * share value.
+ *
+ * @param sheet - The sheet to read transaction rows from.
+ * @param participantNames - Participant names in column order.
+ * @param participantIndexByName - Lookup from participant name to index.
+ * @param participantCount - Number of participants.
+ * @param totalRowAnchor - The off-by-one anchor from getTotalRowAnchor.
+ * @returns The debt matrix; `debtMatrix[payerIndex][payeeIndex]` is what
+ *   `payerIndex` owes `payeeIndex`.
+ */
+function buildDebtMatrix(
   sheet: Sheet,
-  tenantNames: string[],
-  tenantIndexes: Record<string, number>,
-  numTenants: number,
-  totalRow: number,
+  participantNames: string[],
+  participantIndexByName: Record<string, number>,
+  participantCount: number,
+  totalRowAnchor: number,
 ): number[][] {
   Logger.log('Build Graph');
 
-  const graph = zeros(numTenants);
-  const oweeNames = getOweeNames(sheet, totalRow);
-  for (let oweeNameIdx = 0; oweeNameIdx < oweeNames.length; oweeNameIdx++) {
-    const oweeName = oweeNames[oweeNameIdx];
-    const oweeRow = oweeNameIdx + 2;
+  const debtMatrix = createZeroMatrix(participantCount);
+  const payeeNames = getPayeeNamesForRows(sheet, totalRowAnchor);
+  for (let payeeNameIndex = 0; payeeNameIndex < payeeNames.length; payeeNameIndex++) {
+    const payeeName = payeeNames[payeeNameIndex];
+    const transactionRow = payeeNameIndex + 2;
 
-    const oweeIdx = tenantIndexes[oweeName];
-    const amountRange = sheet.getRange(oweeRow, AMOUNT_COLUMN, 1, 1);
+    const payeeIndex = participantIndexByName[payeeName];
+    const amountRange = sheet.getRange(transactionRow, AMOUNT_COLUMN, 1, 1);
     const amount = amountRange.getValue();
 
-    const isEqual = isEqualPaymentRow(sheet, oweeRow);
-    let numEqual = 0;
-    if (isEqual) {
-      numEqual = numEqualSplitting(sheet, oweeRow, numTenants);
+    const isEquallySplit = isEquallySplitRow(sheet, transactionRow);
+    let equallySplitParticipantCount = 0;
+    if (isEquallySplit) {
+      equallySplitParticipantCount = countEquallySplitParticipants(sheet, transactionRow, participantCount);
     }
 
-    const isVariable = isVariablePaymentRow(sheet, oweeRow);
-    let totalVariable = 0;
-    if (isVariable) {
-      totalVariable = calculateTotalVariable(sheet, oweeRow, numTenants);
+    const isVariablySplit = isVariablySplitRow(sheet, transactionRow);
+    let totalVariableShares = 0;
+    if (isVariablySplit) {
+      totalVariableShares = sumVariableSplitShares(sheet, transactionRow, participantCount);
     }
 
-    for (let payerIdx = 0; payerIdx < numTenants; payerIdx++) {
-      if (payerIdx == oweeIdx) {
+    for (let payerIndex = 0; payerIndex < participantCount; payerIndex++) {
+      if (payerIndex == payeeIndex) {
         continue;
       }
-      const payerCol = TENANT_COLUMN_OFFSET + payerIdx + 1;
-      const paymentSplitRange = sheet.getRange(oweeRow, payerCol);
-      const paymentSplit = paymentSplitRange.getValue();
-      if (isEqual && paymentSplit == true) {
-        const splitAmount = amount / numEqual;
-        graph[payerIdx][oweeIdx] += splitAmount;
-      } else if (isVariable && paymentSplit != 0) {
-        const absoluteAmount = (paymentSplit / totalVariable) * amount;
-        graph[payerIdx][oweeIdx] += absoluteAmount;
+      const payerColumn = PARTICIPANT_COLUMN_OFFSET + payerIndex + 1;
+      const participantSplitRange = sheet.getRange(transactionRow, payerColumn);
+      const participantSplitValue = participantSplitRange.getValue();
+      if (isEquallySplit && participantSplitValue == true) {
+        const owedAmount = amount / equallySplitParticipantCount;
+        debtMatrix[payerIndex][payeeIndex] += owedAmount;
+      } else if (isVariablySplit && participantSplitValue != 0) {
+        const owedAmount = (participantSplitValue / totalVariableShares) * amount;
+        debtMatrix[payerIndex][payeeIndex] += owedAmount;
       }
     }
   }
 
-  return graph;
+  return debtMatrix;
 }
 
-function arrayMin(arr: number[]): number {
-  let min = arr[0];
+/**
+ * @param values - Values to search.
+ * @returns The index of the smallest value in `values`.
+ */
+function indexOfMin(values: number[]): number {
+  let min = values[0];
   let minIndex = 0;
 
-  for (let i = 1; i < arr.length; i++) {
-    if (arr[i] < min) {
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] < min) {
       minIndex = i;
-      min = arr[i];
+      min = values[i];
     }
   }
   return minIndex;
 }
 
-function arrayMax(arr: number[]): number {
-  let max = arr[0];
+/**
+ * @param values - Values to search.
+ * @returns The index of the largest value in `values`.
+ */
+function indexOfMax(values: number[]): number {
+  let max = values[0];
   let maxIndex = 0;
 
-  for (let i = 1; i < arr.length; i++) {
-    if (arr[i] > max) {
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] > max) {
       maxIndex = i;
-      max = arr[i];
+      max = values[i];
     }
   }
   return maxIndex;
 }
 
-function calculateSimplifiedPayments(
+/**
+ * Reduces the debt matrix to the minimal set of payments that settles
+ * every balance, via a greedy algorithm: repeatedly match whoever is owed
+ * the most against whoever owes the most, record a payment between them
+ * for the smaller of the two amounts, and repeat until every net balance
+ * is (within floating-point tolerance) zero.
+ *
+ * @param sheet - Unused directly, but kept for signature parity with computeSettlementPayments.
+ * @param debtMatrix - Pairwise debts, as built by buildDebtMatrix.
+ * @param participantNames - Participant names in column order.
+ * @param participantIndexByName - Lookup from participant name to index.
+ * @param participantCount - Number of participants.
+ * @param totalRowAnchor - The off-by-one anchor from getTotalRowAnchor.
+ * @returns Payments as `[payerIndex, payeeIndex, paymentAmount]` tuples.
+ */
+function simplifyDebts(
   sheet: Sheet,
-  graph: number[][],
-  tenantNames: string[],
-  tenantIndexes: Record<string, number>,
-  numTenants: number,
-  totalRow: number,
+  debtMatrix: number[][],
+  participantNames: string[],
+  participantIndexByName: Record<string, number>,
+  participantCount: number,
+  totalRowAnchor: number,
 ): number[][] {
-  const amounts: number[] = [];
+  const netBalances: number[] = [];
 
-  for (let owedIdx = 0; owedIdx < numTenants; owedIdx++) {
-    let owing = 0;
-    for (let oweingIdx = 0; oweingIdx < numTenants; oweingIdx++) {
-      owing += graph[oweingIdx][owedIdx] - graph[owedIdx][oweingIdx];
+  for (let participantIndex = 0; participantIndex < participantCount; participantIndex++) {
+    let netBalance = 0;
+    for (let otherParticipantIndex = 0; otherParticipantIndex < participantCount; otherParticipantIndex++) {
+      netBalance +=
+        debtMatrix[otherParticipantIndex][participantIndex] - debtMatrix[participantIndex][otherParticipantIndex];
     }
-    amounts.push(owing);
+    netBalances.push(netBalance);
   }
 
-  const payments: number[][] = [];
+  const settlementPayments: number[][] = [];
   while (true) {
-    const payee_idx = arrayMax(amounts);
-    const payer_idx = arrayMin(amounts);
+    const payeeIndex = indexOfMax(netBalances);
+    const payerIndex = indexOfMin(netBalances);
     // fml floating point math
-    if (Math.abs(amounts[payee_idx]) < 0.005 && Math.abs(amounts[payer_idx]) < 0.005) {
-      return payments;
+    if (Math.abs(netBalances[payeeIndex]) < 0.005 && Math.abs(netBalances[payerIndex]) < 0.005) {
+      return settlementPayments;
     }
-    const payment_amount = Math.min(-amounts[payer_idx], amounts[payee_idx]);
-    amounts[payee_idx] -= payment_amount;
-    amounts[payer_idx] += payment_amount;
-    payments.push([payer_idx, payee_idx, payment_amount]);
+    const paymentAmount = Math.min(-netBalances[payerIndex], netBalances[payeeIndex]);
+    netBalances[payeeIndex] -= paymentAmount;
+    netBalances[payerIndex] += paymentAmount;
+    settlementPayments.push([payerIndex, payeeIndex, paymentAmount]);
   }
 }
 
-function calculatePayments(
+/**
+ * Decides how to present the debt matrix as a list of payments: if the
+ * "simplify" checkbox (one row below the header, in the split-type column)
+ * is checked, reduces it to a minimal set via simplifyDebts; otherwise
+ * returns every non-zero pairwise debt verbatim.
+ *
+ * @param sheet - The sheet to read the "simplify" toggle from.
+ * @param debtMatrix - Pairwise debts, as built by buildDebtMatrix.
+ * @param participantNames - Participant names in column order.
+ * @param participantIndexByName - Lookup from participant name to index.
+ * @param participantCount - Number of participants.
+ * @param totalRowAnchor - The off-by-one anchor from getTotalRowAnchor.
+ * @returns Payments as `[payerIndex, payeeIndex, paymentAmount]` tuples.
+ */
+function computeSettlementPayments(
   sheet: Sheet,
-  graph: number[][],
-  tenantNames: string[],
-  tenantIndexes: Record<string, number>,
-  numTenants: number,
-  totalRow: number,
+  debtMatrix: number[][],
+  participantNames: string[],
+  participantIndexByName: Record<string, number>,
+  participantCount: number,
+  totalRowAnchor: number,
 ): number[][] {
-  const simplifyRow = totalRow + 1 + 1; // header + 1
-  const simplifyCol = SPLIT_TYPE_COLUMN;
-  const simplifyRange = sheet.getRange(simplifyRow, simplifyCol);
-  const simplifyVal = simplifyRange.getValue();
+  const simplifyToggleRow = totalRowAnchor + 1 + 1; // header + 1
+  const simplifyToggleColumn = SPLIT_TYPE_COLUMN;
+  const simplifyToggleRange = sheet.getRange(simplifyToggleRow, simplifyToggleColumn);
+  const shouldSimplifyDebts = simplifyToggleRange.getValue();
 
-  Logger.log(simplifyVal);
-  // Calculate simplified payments
-  if (simplifyVal == true) {
-    return calculateSimplifiedPayments(sheet, graph, tenantNames, tenantIndexes, numTenants, totalRow);
+  Logger.log(shouldSimplifyDebts);
+  if (shouldSimplifyDebts == true) {
+    return simplifyDebts(sheet, debtMatrix, participantNames, participantIndexByName, participantCount, totalRowAnchor);
   }
 
   const payments: number[][] = [];
   // Spit out the payments verbatim
-  for (let i = 0; i < graph.length; i++) {
-    const owing = graph[i];
-    for (let j = 0; j < owing.length; j++) {
-      const amount = owing[j];
+  for (let payerIndex = 0; payerIndex < debtMatrix.length; payerIndex++) {
+    const owedToOthers = debtMatrix[payerIndex];
+    for (let payeeIndex = 0; payeeIndex < owedToOthers.length; payeeIndex++) {
+      const amount = owedToOthers[payeeIndex];
       if (amount > 0.005) {
-        payments.push([i, j, amount]);
+        payments.push([payerIndex, payeeIndex, amount]);
       }
     }
   }
   return payments;
 }
 
-function renderPayments(
+/**
+ * Clears the settle-up summary area and writes each computed payment as
+ * "<payee name> $<amount>" beneath the "TOTAL OWING" marker, one column
+ * per payer, stacking multiple payments from the same payer downward.
+ *
+ * @param sheet - The sheet to write into.
+ * @param payments - Payments as `[payerIndex, payeeIndex, paymentAmount]` tuples.
+ * @param participantNames - Participant names in column order.
+ * @param participantIndexByName - Lookup from participant name to index.
+ * @param participantCount - Number of participants.
+ * @param totalRowAnchor - The off-by-one anchor from getTotalRowAnchor.
+ */
+function writeSettlementPayments(
   sheet: Sheet,
   payments: number[][],
-  tenantNames: string[],
-  tenantIndexes: Record<string, number>,
-  numTenants: number,
-  totalRow: number,
+  participantNames: string[],
+  participantIndexByName: Record<string, number>,
+  participantCount: number,
+  totalRowAnchor: number,
 ): void {
-  const indexes: number[] = [];
-  for (let i = 0; i < numTenants; i++) {
-    indexes.push(0);
+  const nextRowOffsetByPayerIndex: number[] = [];
+  for (let i = 0; i < participantCount; i++) {
+    nextRowOffsetByPayerIndex.push(0);
   }
 
-  const clearRange = sheet.getRange(totalRow + 1, TENANT_COLUMN_OFFSET + 1, numTenants, numTenants);
-  clearRange.clear({
+  const settlementAreaRange = sheet.getRange(
+    totalRowAnchor + 1,
+    PARTICIPANT_COLUMN_OFFSET + 1,
+    participantCount,
+    participantCount,
+  );
+  settlementAreaRange.clear({
     contentsOnly: true,
   });
 
   for (let i = 0; i < payments.length; i++) {
     const payment = payments[i];
-    const payerIdx = payment[0];
-    const payeeIdx = payment[1];
-    const payeeName = tenantNames[payeeIdx];
+    const payerIndex = payment[0];
+    const payeeIndex = payment[1];
+    const payeeName = participantNames[payeeIndex];
     const amount = payment[2];
-    const range = sheet.getRange(totalRow + indexes[payerIdx] + 1, TENANT_COLUMN_OFFSET + payerIdx + 1);
-    const amountStr = '$' + amount.toFixed(2);
-    range.setValue(payeeName + ' ' + amountStr);
-    indexes[payerIdx] = indexes[payerIdx] + 1;
+    const outputCell = sheet.getRange(
+      totalRowAnchor + nextRowOffsetByPayerIndex[payerIndex] + 1,
+      PARTICIPANT_COLUMN_OFFSET + payerIndex + 1,
+    );
+    const formattedAmount = '$' + amount.toFixed(2);
+    outputCell.setValue(payeeName + ' ' + formattedAmount);
+    nextRowOffsetByPayerIndex[payerIndex] = nextRowOffsetByPayerIndex[payerIndex] + 1;
   }
 }
 
-function calculate(sheet: Sheet): void {
+/**
+ * Recomputes the "who owes whom" settle-up summary: builds the debt matrix
+ * from every transaction row, reduces it to a payment list (simplified or
+ * verbatim per the sheet's toggle), and writes that list below the
+ * "TOTAL OWING" marker. Called after every edit (via onEdit) and after
+ * every batch of rows added via the sync API (via addTransactionsForPeriod).
+ *
+ * @param sheet - The sheet to recalculate.
+ */
+function recalculateSettleUp(sheet: Sheet): void {
   Logger.log('Calculate');
 
-  const tenantNames = getTenantNames(sheet);
-  const tenantIndexes = getTenantIndexes(tenantNames);
-  const numTenants = getNumberOfTenants(sheet);
-  // getTotalRow's `undefined` path is unreachable in normal use (a real
-  // "TOTAL OWING" row always exists) — asserted here rather than guarded
-  // with an early return, to keep this exactly as behaviorally faithful to
-  // the original untyped version as possible. See the note on getTotalRow.
-  const totalRow = getTotalRow(sheet) as number;
+  const participantNames = getParticipantNames(sheet);
+  const participantIndexByName = getParticipantIndexByName(participantNames);
+  const participantCount = getParticipantCount(sheet);
+  // getTotalRowAnchor's `undefined` path is unreachable in normal use (a
+  // real "TOTAL OWING" row always exists) — asserted here rather than
+  // guarded with an early return, to keep this exactly as behaviorally
+  // faithful to the original untyped version as possible. See the note on
+  // getTotalRowAnchor.
+  const totalRowAnchor = getTotalRowAnchor(sheet) as number;
   Logger.log('variables Set in Calculate');
 
-  const graph = buildGraph(sheet, tenantNames, tenantIndexes, numTenants, totalRow);
+  const debtMatrix = buildDebtMatrix(sheet, participantNames, participantIndexByName, participantCount, totalRowAnchor);
   Logger.log('calculate payments in Calculate');
 
-  const payments = calculatePayments(sheet, graph, tenantNames, tenantIndexes, numTenants, totalRow);
+  const payments = computeSettlementPayments(
+    sheet,
+    debtMatrix,
+    participantNames,
+    participantIndexByName,
+    participantCount,
+    totalRowAnchor,
+  );
   Logger.log('RenderPayments');
 
-  renderPayments(sheet, payments, tenantNames, tenantIndexes, numTenants, totalRow);
+  writeSettlementPayments(sheet, payments, participantNames, participantIndexByName, participantCount, totalRowAnchor);
   Logger.log('renderPayments and calculate completed');
 }
 
@@ -380,9 +585,10 @@ function calculate(sheet: Sheet): void {
 // way a manual paste + dropdown selection would, without needing to
 // reimplement the checkbox/percent defaulting or the settle-up math above
 // in TypeScript. Nothing above this line has been modified beyond adding
-// type annotations for local development.
+// type annotations, renaming identifiers, and JSDoc for local development.
 // ---------------------------------------------------------------------
 
+/** Script Properties key holding the shared secret doPost checks incoming requests against. */
 const SYNC_TOKEN_PROPERTY_KEY = 'SYNC_TOKEN';
 
 interface AddTransactionsResult {
@@ -402,13 +608,17 @@ interface AddTransactionsPayload {
  * with the link"). Expects a JSON POST body:
  *   { token: string, payerName: string, periodLabel: string, rows: string[][] }
  * where each row is [description, payerName, amount, splitType] (matching
- * columns A-D; columns E onward are recomputed by onSplitTypeChanged below,
+ * columns A-D; columns E onward are recomputed by onSplitTypeChanged above,
  * not supplied by the caller).
  *
  * Apps Script Web Apps always return HTTP 200 regardless of what happens
  * inside doPost — there is no API to set a different status code — so
  * callers must check the `ok` field in the JSON response body, not the
  * HTTP status.
+ *
+ * @param e - The Web App POST event; `e.postData.contents` holds the raw JSON body.
+ * @returns A JSON response: `{ ok: true, result }` on success, or
+ *   `{ ok: false, error }` on failure (bad token, bad payload, or a thrown error).
  */
 function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.TextOutput {
   try {
@@ -430,6 +640,12 @@ function doPost(e: GoogleAppsScript.Events.DoPost): GoogleAppsScript.Content.Tex
   }
 }
 
+/**
+ * Wraps a value as a JSON HTTP response body for a Web App request.
+ *
+ * @param body - The value to serialize as the response body.
+ * @returns A `TextOutput` with `application/json` content type.
+ */
 function jsonResponse(body: unknown): GoogleAppsScript.Content.TextOutput {
   return ContentService.createTextOutput(JSON.stringify(body)).setMimeType(ContentService.MimeType.JSON);
 }
@@ -441,7 +657,12 @@ function jsonResponse(body: unknown): GoogleAppsScript.Content.TextOutput {
  * `rows` just above the "TOTAL OWING" marker, applies the same
  * checkbox/percent defaulting a manual dropdown selection would via the
  * existing onSplitTypeChanged, then recalculates the settle-up summary via
- * the existing calculate().
+ * the existing recalculateSettleUp().
+ *
+ * @param payerName - Who paid, e.g. "Brian" — determines the target tab's name.
+ * @param periodLabel - The billing period, e.g. "07/26" — the rest of the target tab's name.
+ * @param rows - Each row is [description, payerName, amount, splitType] (columns A-D).
+ * @returns The target sheet's name and how many rows were added.
  */
 function addTransactionsForPeriod(payerName: string, periodLabel: string, rows: string[][]): AddTransactionsResult {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -461,11 +682,20 @@ function addTransactionsForPeriod(payerName: string, periodLabel: string, rows: 
     onSplitTypeChanged(sheet, insertRow + i);
   }
 
-  calculate(sheet);
+  recalculateSettleUp(sheet);
 
   return { sheetName, rowsAdded: rows.length };
 }
 
+/**
+ * Looks up `sheetName` in `spreadsheet`, or creates it by duplicating the
+ * "DUPLICATE ME" template sheet (preserving its formatting/validation)
+ * and renaming the copy.
+ *
+ * @param spreadsheet - The spreadsheet to search/modify.
+ * @param sheetName - The target tab name, e.g. "Brian 07/26".
+ * @returns The existing or newly-created sheet.
+ */
 function findOrCreateSheet(spreadsheet: Spreadsheet, sheetName: string): Sheet {
   const existing = spreadsheet.getSheetByName(sheetName);
   if (existing) {
@@ -486,15 +716,19 @@ function findOrCreateSheet(spreadsheet: Spreadsheet, sheetName: string): Sheet {
 
 /**
  * Locates the actual row number containing the literal "TOTAL OWING"
- * marker. Deliberately separate from getTotalRow() above, which returns an
- * off-by-one-adjusted value tuned for the existing settle-up math further
- * up this file — reusing that value here for row insertion would be
- * wrong. This function is only used to find where to insert new rows;
- * calculate() re-derives its own totalRow afterward via getTotalRow(),
- * unaffected by anything here.
+ * marker. Deliberately separate from getTotalRowAnchor() above, which
+ * returns an off-by-one-adjusted value tuned for the existing settle-up
+ * math further up this file — reusing that value here for row insertion
+ * would be wrong. This function is only used to find where to insert new
+ * rows; recalculateSettleUp() re-derives its own anchor afterward via
+ * getTotalRowAnchor(), unaffected by anything here.
+ *
+ * @param sheet - The sheet to search.
+ * @returns The real row number of the "TOTAL OWING" marker.
+ * @throws If no "TOTAL OWING" row is found.
  */
 function findTotalOwingRowIndex(sheet: Sheet): number {
-  const range = sheet.getRange(2, TENANT_COLUMN_OFFSET, ROWS_TO_SEARCH_TOTAL, 1);
+  const range = sheet.getRange(2, PARTICIPANT_COLUMN_OFFSET, MAX_ROWS_TO_SEARCH, 1);
   const values = range.getValues();
   for (let i = 0; i < values.length; i++) {
     if (values[i][0] == 'TOTAL OWING') {
