@@ -39,7 +39,7 @@ node dist/main.js transactions.csv EXPENSE_SPLITTING Brian
 
 `EXPENSE_SPLITTING` is currently the only supported `outputFormat`; any other value throws an `Error` naming the bad format.
 
-Run the full workspace test suite from the repo root with `pnpm -r test` (or `pnpm --filter @mint-csv-converter/core test` for just the converter), and typecheck with `pnpm -r typecheck`.
+Run the full workspace test suite from the repo root with `pnpm test` (or `nx test @mint-csv-converter/core` for just the converter), and typecheck with `pnpm typecheck`. See "Task orchestration (Nx)" below.
 
 ## Architecture
 
@@ -66,4 +66,16 @@ Add a new `outputFormat` branch in `getConverter` pointing to a new `convertTo*`
 Input is always a manually-exported Citi CSV — Playwright-based export automation was considered and explicitly ruled out (bot-detection risk not worth it for this).
 
 - [packages/apps-script/src/Code.ts](packages/apps-script/src/Code.ts) — the existing sheet's Apps Script, logic untouched above the marker comment (type annotations added for local dev only), plus an appended `doPost` Web App endpoint (`addTransactionsForPeriod`) that finds-or-creates the `"<Payer> <Period>"` tab (duplicating `"DUPLICATE ME"` to preserve styling), inserts rows above the `"TOTAL OWING"` marker, and reuses the existing `onSplitTypeChanged`/`calculate()` for defaulting and settle-up math. Apps Script can't run TypeScript directly, so `pnpm build` bundles this to `dist/Code.js` via Rollup — that's what actually gets deployed. See that directory's README for build/deployment steps — deploying is a manual, one-time step in the Apps Script editor or via `clasp`; it can't be scripted from here.
-- `packages/automation` — [sheetsClient.ts](packages/automation/src/sheetsClient.ts) (thin HTTP client for the endpoint above), [sync.ts](packages/automation/src/sync.ts) (orchestrator: imports a CSV via `@mint-csv-converter/core`, groups by transaction month, dedupes against a local sync-state file tracking the newest date already pushed per payer, and POSTs each group). See that package's README for setup/usage. Depends on `@mint-csv-converter/core`'s built `dist/` output — rebuild core after changing it before running automation.
+- `packages/automation` — [sheetsClient.ts](packages/automation/src/sheetsClient.ts) (thin HTTP client for the endpoint above), [sync.ts](packages/automation/src/sync.ts) (orchestrator: imports a CSV via `@mint-csv-converter/core`, groups by transaction month, dedupes against a local sync-state file tracking the newest date already pushed per payer, and POSTs each group). See that package's README for setup/usage. Depends on `@mint-csv-converter/core`'s built `dist/` output; Nx handles this automatically (see below) — you don't need to manually rebuild core first.
+
+## Task orchestration (Nx)
+
+Nx sits on top of the pnpm workspace as a task runner/cache — it doesn't replace pnpm as the package manager. `nx.json` configures it for **local caching only** (no Nx Cloud).
+
+- Run tasks via `nx run <project>:<target>`, `nx run-many -t <target>`, or the root `package.json` scripts (`pnpm build`/`pnpm test`/`pnpm typecheck`, which just call `nx run-many -t <target>` for all three packages).
+- Targets are largely *inferred*, not hand-written: `@nx/js/typescript` infers `build`/`typecheck` from each package's `tsconfig.json` (project-referenced, `composite: true`, orchestrated via `tsc --build` from the root [tsconfig.json](tsconfig.json)); `@nx/vitest` infers `test` from each `vitest.config.ts`; `@nx/rollup` infers apps-script's `build` from `rollup.config.mjs`. `nx.json`'s `targetDefaults` make `build`/`test`/`typecheck` depend on `^build` (a project's own workspace dependencies get built first) — this is what makes automation's dependency on core's `dist/` automatic.
+- A package only needs an explicit script in its own `package.json` when the inferred target is wrong or missing — e.g. `packages/apps-script`'s `typecheck` script (`tsc --noEmit`) exists because that package isn't part of the composite project-reference graph (its tsconfig sets `noEmit: true` for Rollup bundling instead), so native inference can't run it in `tsc --build` mode and would otherwise silently no-op it.
+- `packages/apps-script`'s `deploy` script (`nx build @mint-csv-converter/apps-script && clasp push`) is intentionally a plain script, not an Nx target — deploying to the live Apps Script project should stay a deliberate, manually-invoked action.
+- After changing a package's `tsconfig.json` dependencies/references, run `nx sync:check` (or just `nx sync`) if you see a "workspace is out of sync" error — this keeps TS project references consistent with the Nx project graph.
+- `nx` is installed as an exact-pinned root devDependency; invoke it via the local binary (`nx <command>`, not `npx nx`, which can silently resolve a different version) — a global shim (`volta install nx` or `npm i -g nx`) makes plain `nx` resolve to the workspace-local version automatically.
+- All devDependencies (including build-time-only ones like `tslib`, `typescript`) live in the **root** `package.json` only; individual packages should not pin their own devDependencies — pnpm hoists them and both `require()` resolution and `pnpm exec`/script PATH resolution walk up to root's `node_modules`.

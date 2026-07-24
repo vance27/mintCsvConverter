@@ -1,6 +1,27 @@
+import { readFileSync } from 'node:fs';
 import typescript from '@rollup/plugin-typescript';
 import { nodeResolve } from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
+
+/**
+ * Emits appsscript.json into the output directory as part of the bundle,
+ * so the whole build (manifest included) is just `rollup -c` — no separate
+ * `cp` step required. Lets Nx's @nx/rollup plugin infer a complete `build`
+ * target directly from this config file, matching how the plugin expects
+ * a Rollup-based project's build to work.
+ */
+function copyManifest() {
+  return {
+    name: 'copy-manifest',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'appsscript.json',
+        source: readFileSync(new URL('./appsscript.json', import.meta.url)),
+      });
+    },
+  };
+}
 
 /**
  * Apps Script doesn't support import/export statements, and several
@@ -47,5 +68,5 @@ export default {
     dir: 'dist',
     format: 'es',
   },
-  plugins: [appsScriptEntryPoint(), nodeResolve(), commonjs(), typescript()],
+  plugins: [appsScriptEntryPoint(), nodeResolve(), commonjs(), typescript(), copyManifest()],
 };

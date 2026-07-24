@@ -1,19 +1,16 @@
-import { describe, it, afterEach, mock } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { SheetsClient, loadSheetsClientConfigFromEnv } from './sheetsClient.js';
 
 describe('SheetsClient', () => {
-  const originalFetch = globalThis.fetch;
-
   afterEach(() => {
-    globalThis.fetch = originalFetch;
+    vi.unstubAllGlobals();
   });
 
   it('posts the expected payload and returns the result on success', async () => {
-    const fetchMock = mock.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) =>
       new Response(JSON.stringify({ ok: true, result: { sheetName: 'Brian 07/26', rowsAdded: 2 } }), { status: 200 }),
     );
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
 
     const client = new SheetsClient({ webAppUrl: 'https://example.com/exec', token: 'secret' });
     const result = await client.addTransactionsForPeriod({
@@ -22,14 +19,14 @@ describe('SheetsClient', () => {
       rows: [['Chipotle 07/01/2026', 'Brian', '28.18', 'Equally']],
     });
 
-    assert.deepEqual(result, { sheetName: 'Brian 07/26', rowsAdded: 2 });
-    assert.equal(fetchMock.mock.calls.length, 1);
+    expect(result).toEqual({ sheetName: 'Brian 07/26', rowsAdded: 2 });
+    expect(fetchMock.mock.calls.length).toBe(1);
 
     const call = fetchMock.mock.calls[0]!;
-    assert.equal(call.arguments[0], 'https://example.com/exec');
-    const init = call.arguments[1] as RequestInit;
+    expect(call[0]).toBe('https://example.com/exec');
+    const init = call[1] as RequestInit;
     const body = JSON.parse(init.body as string);
-    assert.deepEqual(body, {
+    expect(body).toEqual({
       token: 'secret',
       payerName: 'Brian',
       periodLabel: '07/26',
@@ -38,25 +35,27 @@ describe('SheetsClient', () => {
   });
 
   it('throws when the endpoint reports ok:false', async () => {
-    globalThis.fetch = mock.fn(
-      async () => new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { status: 200 }),
-    ) as unknown as typeof fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ ok: false, error: 'Unauthorized' }), { status: 200 })),
+    );
 
     const client = new SheetsClient({ webAppUrl: 'https://example.com/exec', token: 'wrong' });
-    await assert.rejects(
-      () => client.addTransactionsForPeriod({ payerName: 'Brian', periodLabel: '07/26', rows: [] }),
-      /Unauthorized/,
-    );
+    await expect(
+      client.addTransactionsForPeriod({ payerName: 'Brian', periodLabel: '07/26', rows: [] }),
+    ).rejects.toThrow(/Unauthorized/);
   });
 
   it('throws on a non-2xx HTTP response', async () => {
-    globalThis.fetch = mock.fn(async () => new Response('', { status: 500 })) as unknown as typeof fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 500 })),
+    );
 
     const client = new SheetsClient({ webAppUrl: 'https://example.com/exec', token: 'secret' });
-    await assert.rejects(
-      () => client.addTransactionsForPeriod({ payerName: 'Brian', periodLabel: '07/26', rows: [] }),
-      /500/,
-    );
+    await expect(
+      client.addTransactionsForPeriod({ payerName: 'Brian', periodLabel: '07/26', rows: [] }),
+    ).rejects.toThrow(/500/);
   });
 });
 
@@ -66,20 +65,18 @@ describe('loadSheetsClientConfigFromEnv', () => {
       SHEETS_WEBAPP_URL: 'https://example.com/exec',
       SHEETS_SYNC_TOKEN: 'secret',
     } as NodeJS.ProcessEnv);
-    assert.deepEqual(config, { webAppUrl: 'https://example.com/exec', token: 'secret' });
+    expect(config).toEqual({ webAppUrl: 'https://example.com/exec', token: 'secret' });
   });
 
   it('throws when SHEETS_WEBAPP_URL is missing', () => {
-    assert.throws(
-      () => loadSheetsClientConfigFromEnv({ SHEETS_SYNC_TOKEN: 'secret' } as NodeJS.ProcessEnv),
+    expect(() => loadSheetsClientConfigFromEnv({ SHEETS_SYNC_TOKEN: 'secret' } as NodeJS.ProcessEnv)).toThrow(
       /SHEETS_WEBAPP_URL/,
     );
   });
 
   it('throws when SHEETS_SYNC_TOKEN is missing', () => {
-    assert.throws(
-      () => loadSheetsClientConfigFromEnv({ SHEETS_WEBAPP_URL: 'https://example.com/exec' } as NodeJS.ProcessEnv),
-      /SHEETS_SYNC_TOKEN/,
-    );
+    expect(() =>
+      loadSheetsClientConfigFromEnv({ SHEETS_WEBAPP_URL: 'https://example.com/exec' } as NodeJS.ProcessEnv),
+    ).toThrow(/SHEETS_SYNC_TOKEN/);
   });
 });

@@ -10,5 +10,21 @@ trustPolicy: no-downgrade # refuse a package version whose trust signals regress
 # the matching platform-specific native binary from the registry (a common,
 # well-established pattern shared by esbuild/swc/turbopack) — no other
 # scripts are allowed to run.
+#
+# nx's postinstall only checks/updates the Nx Cloud client when Nx Cloud is
+# configured (a no-op here, since this workspace uses local-only caching)
+# and asserts platform support; it has a 30s timeout and degrades
+# gracefully on any error.
 allowBuilds:
   esbuild: true
+  nx: true
+
+# @nx/js pulls in @babel/core -> semver@6.3.1, which lacks provenance
+# attestation (published 2023-07-10 on the old, backport-only 6.x
+# maintenance line — the actively-developed 7.x line does have
+# provenance). Rather than exempting the trust-downgrade check for the
+# untrusted old version, force resolution to a trusted 7.x release
+# instead; semver's basic comparison API @babel/core relies on is stable
+# across that boundary.
+overrides:
+  semver: 7.8.4

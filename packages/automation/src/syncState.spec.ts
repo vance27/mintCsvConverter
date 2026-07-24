@@ -1,5 +1,4 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +9,7 @@ describe('syncState', () => {
     const dir = mkdtempSync(join(tmpdir(), 'sync-state-'));
     try {
       const state = loadSyncState(join(dir, 'missing.json'));
-      assert.deepEqual(state, {});
+      expect(state).toEqual({});
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -23,7 +22,7 @@ describe('syncState', () => {
       saveSyncState(path, { Brian: '2026-06-29' });
 
       const state = loadSyncState(path);
-      assert.deepEqual(state, { Brian: '2026-06-29' });
+      expect(state).toEqual({ Brian: '2026-06-29' });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

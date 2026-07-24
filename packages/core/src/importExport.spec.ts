@@ -1,5 +1,4 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert/strict';
+import { describe, it, expect } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,14 +21,14 @@ describe('ImportFileToLines', () => {
 
       const results = new ImportFileToLines(path).getResults();
 
-      assert.equal(results.length, 4);
+      expect(results.length).toBe(4);
       // Row 1: amount came from Credit (a card payment) — sign is preserved, not forced positive.
-      assert.deepEqual(results[1], ['06/29/2026', 'ONLINE PAYMENT, THANK YOU', '', '-3505.42']);
+      expect(results[1]).toEqual(['06/29/2026', 'ONLINE PAYMENT, THANK YOU', '', '-3505.42']);
       // Row 2: amount came from Debit (a purchase).
-      assert.deepEqual(results[2], ['06/27/2026', "SQ *BRAVI'S CRAFT MEXICAN Shakopee MN", '', '56.60']);
+      expect(results[2]).toEqual(['06/27/2026', "SQ *BRAVI'S CRAFT MEXICAN Shakopee MN", '', '56.60']);
       // Row 3: a genuine merchant refund via Credit — must stay negative, not get abs()'d
       // into looking like an ordinary positive charge.
-      assert.deepEqual(results[3], ['06/13/2026', 'REI #109 MAPLE GROVE MAPLE GROVE MN', '', '-56.77']);
+      expect(results[3]).toEqual(['06/13/2026', 'REI #109 MAPLE GROVE MAPLE GROVE MN', '', '-56.77']);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -44,7 +43,7 @@ describe('ImportFileToLines', () => {
         ['06/20/2024', 'Chipotle', '25.00'],
       ]);
 
-      assert.throws(() => new ImportFileToLines(path).getResults(), /Debit/);
+      expect(() => new ImportFileToLines(path).getResults()).toThrow(/Debit/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -70,9 +69,9 @@ describe('ImportFileToLines', () => {
       const resultsA = importerA.getResults();
       const resultsB = importerB.getResults();
 
-      assert.notEqual(resultsA, resultsB);
-      assert.equal(resultsA.length, 2);
-      assert.equal(resultsB.length, 2);
+      expect(resultsA).not.toBe(resultsB);
+      expect(resultsA.length).toBe(2);
+      expect(resultsB.length).toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -93,13 +92,13 @@ describe('ExportFileToLines', () => {
 
     try {
       const writtenFiles = readdirSync(dir);
-      assert.equal(writtenFiles.length, 1);
+      expect(writtenFiles.length).toBe(1);
       const filename = writtenFiles[0]!;
-      assert.equal(filename.includes(' '), false);
-      assert.equal(filename.includes(':'), false);
+      expect(filename.includes(' ')).toBe(false);
+      expect(filename.includes(':')).toBe(false);
 
       const content = readFileSync(join(dir, filename), 'utf-8');
-      assert.deepEqual(parse(content), lines);
+      expect(parse(content)).toEqual(lines);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
