@@ -6,3 +6,5 @@
 # CSV Transaction Files
 *.csv
 *.CSV
+
+.env

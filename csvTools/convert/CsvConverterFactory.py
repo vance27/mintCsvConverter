@@ -1,65 +1,72 @@
 class CsvConverterFactory:
-    bannedLinesDict = {
+    # Payer-specific personal spending that should be excluded from the
+    # output entirely (not split with anyone).
+    personalExclusions = {
         "PATRICE": [
-        'CVS/SPECIALTY',
-        'BHATTIGI',
-        'E-PAYMENT, TARGET.COM',
-        'ETSY.COM',
-        'Electronic Deposit Target Enterpris',
-        'Mobile Banking Transfer Deposit',
-        'Mobile Check Deposit',
-        'Web Authorized Pmt',
-        'Payment Received - Thank You!',
-        'LULUS.COM',
-        'Auto Transfer to Betterment Account',
-    ], 
-    "BRIAN":  [
-        'BlackRock Lifepath Index 2060 K Fund',
-        'CITI CARD',
-        'NATIONAL MARROW',
-        'ONLINE PAYMENT, THANK YOU',
-        'ONLINE BANKING TRANSFER TO SHARE',
-        'ONLINE BANKING TRANSFER FROM SHARE',
-        'TOCA TRAINING CENTERS',
-        'QUALIFIED DIVIDEND',
-        'Requested transfer from ',
-    ],
-    "SHARED": [
-        "LTF LIFE TIME MO DUES",
-        "HONDA PMT",
-        "STATE FARM",
-        "TRUPANION",
-        "CPENERGY",
-        "METRONET",
-        "XCEL ENERGY",
-        'FLAGSTAR',
-        'ROUNDPOINT MTG PAYMENTS',
-        'WITHDRAWAL ACH ALLY BANK',
-        'ATM Fee Reimbursement',
-        'APPLE.COM/BILL',
-        'VANGUARD FEDERAL MONEY MARKET FUND (Settlement Fund)',
-        'VANGUARD TOTAL STOCK MARKET INDEX',
-        'Requested transfer from',
-        'Buy Mutual Fund',
-        'CURRENT YEAR INDIVIDUAL CONTR',
-        'Current Year Individual Contribution',
-        'Interest Paid',
-        'Interest Payment',
-        "Monthly Maintenance Fee",
-        'MOBILE PAYMENT - THANK YOU',
-        'INTERNET PAYMENT - THANK YOU',
-        'AUTOPAY PAYMENT - THANK YOU',
-        'PAYMENT THANK YOU',
-        'Web Authorized Pmt',
-        
-    ],
-    "VARIABLE": [
-                'Costco',
-        'TARGET'
-    ]
+            'CVS/SPECIALTY',
+            'BHATTIGI',
+            'E-PAYMENT, TARGET.COM',
+            'ETSY.COM',
+            'Electronic Deposit Target Enterpris',
+            'Mobile Banking Transfer Deposit',
+            'Mobile Check Deposit',
+            'Web Authorized Pmt',
+            'Payment Received - Thank You!',
+            'LULUS.COM',
+            'Auto Transfer to Betterment Account',
+        ],
+        "BRIAN": [
+            'BlackRock Lifepath Index 2060 K Fund',
+            'CITI CARD',
+            'NATIONAL MARROW',
+            'ONLINE PAYMENT, THANK YOU',
+            'ONLINE BANKING TRANSFER TO SHARE',
+            'ONLINE BANKING TRANSFER FROM SHARE',
+            'TOCA TRAINING CENTERS',
+            'QUALIFIED DIVIDEND',
+            'Requested transfer from ',
+        ],
     }
 
-    
+    # Classification rules for transactions that DO appear in the output:
+    # SHARED vendors are known joint bills, split equally (TRUE/TRUE); this
+    # is documentation only (see _convert_to_expense_splitting) since ordinary
+    # transactions already default to the same Equally split. VARIABLE
+    # vendors get a "%"/"%" placeholder split instead.
+    splitRulesDict = {
+        "SHARED": [
+            "LTF LIFE TIME MO DUES",
+            "HONDA PMT",
+            "STATE FARM",
+            "TRUPANION",
+            "CPENERGY",
+            "METRONET",
+            "XCEL ENERGY",
+            'FLAGSTAR',
+            'ROUNDPOINT MTG PAYMENTS',
+            'WITHDRAWAL ACH ALLY BANK',
+            'ATM Fee Reimbursement',
+            'APPLE.COM/BILL',
+            'VANGUARD FEDERAL MONEY MARKET FUND (Settlement Fund)',
+            'VANGUARD TOTAL STOCK MARKET INDEX',
+            'Requested transfer from',
+            'Buy Mutual Fund',
+            'CURRENT YEAR INDIVIDUAL CONTR',
+            'Current Year Individual Contribution',
+            'Interest Paid',
+            'Interest Payment',
+            "Monthly Maintenance Fee",
+            'MOBILE PAYMENT - THANK YOU',
+            'INTERNET PAYMENT - THANK YOU',
+            'AUTOPAY PAYMENT - THANK YOU',
+            'PAYMENT THANK YOU',
+            'Web Authorized Pmt',
+        ],
+        "VARIABLE": [
+            'Costco',
+            'TARGET'
+        ]
+    }
 
     sorted=False
 
@@ -98,6 +105,9 @@ class CsvConverterFactory:
                         "%"
                     ])
                 else:
+                    # Covers ordinary transactions as well as
+                    # splitRulesDict["SHARED"] vendors (known joint bills) —
+                    # both split evenly.
                     result.append([
                         line[1] + ' ' + line[0],
                         name,
@@ -114,7 +124,7 @@ class CsvConverterFactory:
         return (result, invalidLines)
 
     def _variable_split(self, line):
-        variableLines = self.bannedLinesDict.get("VARIABLE")
+        variableLines = self.splitRulesDict.get("VARIABLE")
         if variableLines is None:
             raise KeyError("No variable lines")
         for variableLine in variableLines:
@@ -124,17 +134,11 @@ class CsvConverterFactory:
         return False
 
     def _valid_line(self, line, name):
-        bannedLines = self.bannedLinesDict.get(name.upper())
-        sharedLines = self.bannedLinesDict.get("SHARED")
-        if bannedLines is None:
-            raise KeyError("No banned lines for name: " + name)
-        if sharedLines is None:
-            raise KeyError("No shared lines")
-        for bannedLine in bannedLines:
-            if bannedLine in line[1]:
-                return False
-        for bannedLine in sharedLines:
-            if bannedLine in line[1]:
+        excludedLines = self.personalExclusions.get(name.upper())
+        if excludedLines is None:
+            raise KeyError("No personal exclusions configured for name: " + name)
+        for excludedLine in excludedLines:
+            if excludedLine in line[1]:
                 return False
         return True
 

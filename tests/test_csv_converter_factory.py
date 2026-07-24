@@ -25,9 +25,9 @@ class ValidLineTests(unittest.TestCase):
         line = ["06/22/2024", "CITI CARD PAYMENT", "CITI", "500.00"]
         self.assertFalse(self.factory._valid_line(line, "Brian"))
 
-    def test_shared_line_is_excluded(self):
+    def test_shared_line_is_valid(self):
         line = ["06/22/2024", "APPLE.COM/BILL 866-712-7753 CA", "APPLE", "2.99"]
-        self.assertFalse(self.factory._valid_line(line, "Brian"))
+        self.assertTrue(self.factory._valid_line(line, "Brian"))
 
     def test_ordinary_transaction_is_valid(self):
         line = ["06/20/2024", "Chipotle Mexican Grill", "CHIPOTLE", "25.00"]
@@ -52,7 +52,7 @@ class VariableSplitTests(unittest.TestCase):
         self.assertFalse(self.factory._variable_split(line))
 
     def test_missing_variable_key_raises_key_error(self):
-        self.factory.bannedLinesDict = {}
+        self.factory.splitRulesDict = {}
         line = ["06/20/2024", "Chipotle Mexican Grill", "CHIPOTLE", "25.00"]
         with self.assertRaises(KeyError):
             self.factory._variable_split(line)
@@ -66,6 +66,7 @@ class ConvertToExpenseSplittingTests(unittest.TestCase):
             ["06/20/2024", "Chipotle Mexican Grill", "CHIPOTLE", "25.00"],
             ["06/21/2024", "Costco Wholesale", "COSTCO", "150.00"],
             ["06/22/2024", "CITI CARD PAYMENT", "CITI", "500.00"],
+            ["06/23/2024", "APPLE.COM/BILL 866-712-7753 CA", "APPLE", "2.99"],
         ]
 
     def test_valid_lines_are_split_and_tagged_correctly(self):
@@ -74,6 +75,7 @@ class ConvertToExpenseSplittingTests(unittest.TestCase):
         self.assertEqual(
             result,
             [
+                ["APPLE.COM/BILL 866-712-7753 CA 06/23/2024", "Brian", "2.99", "Equally", "TRUE", "TRUE"],
                 ["Costco Wholesale 06/21/2024", "Brian", "150.00", "Variably", "%", "%"],
                 ["Chipotle Mexican Grill 06/20/2024", "Brian", "25.00", "Equally", "TRUE", "TRUE"],
             ],
