@@ -74,7 +74,7 @@ class CsvConverterFactory:
         if outputFormat == 'EXPENSE_SPLITTING':
             return self._convert_to_expense_splitting
         else:
-            raise ValueError(format)
+            raise ValueError(f"Unsupported output format: {outputFormat}")
 
     def _convert_to_expense_splitting(self, lines, name):
         # print("Convert to expense splitting called", lines)
@@ -116,7 +116,7 @@ class CsvConverterFactory:
     def _variable_split(self, line):
         variableLines = self.bannedLinesDict.get("VARIABLE")
         if variableLines is None:
-            throw("No variable lines")
+            raise KeyError("No variable lines")
         for variableLine in variableLines:
             if variableLine in line[1]:
                 return True
@@ -127,9 +127,9 @@ class CsvConverterFactory:
         bannedLines = self.bannedLinesDict.get(name.upper())
         sharedLines = self.bannedLinesDict.get("SHARED")
         if bannedLines is None:
-            throw("No banned lines for name: ", name)
+            raise KeyError("No banned lines for name: " + name)
         if sharedLines is None:
-            throw("No shared lines")
+            raise KeyError("No shared lines")
         for bannedLine in bannedLines:
             if bannedLine in line[1]:
                 return False

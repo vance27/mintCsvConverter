@@ -1,4 +1,4 @@
-import sys
+import argparse
 from csvTools.convert import CsvConverterFactory as ccf
 from csvTools.fileInteraction import ImportFileToLines as iftl
 from csvTools.fileInteraction import ExportFileToLines as eftl
@@ -12,18 +12,22 @@ def convertFile(inputFile, outputFormat, name="Brian"):
     return converter.convert(lines, outputFormat, name)
 
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Convert a Mint.com transaction export CSV into an expense-splitting CSV."
+    )
+    parser.add_argument("input_file", help="Path to the Mint.com transaction export CSV")
+    parser.add_argument("output_format", help="Output format (currently only EXPENSE_SPLITTING is supported)")
+    parser.add_argument("name", nargs="?", default="Brian", help="Name of the person who paid (default: Brian)")
+    return parser.parse_args(argv)
+
+
 def main():
-    # Inputs
-    # file: csvTools file that you want to convert
-    # outputType: output file format
-    # name: name of person who paid for the expenses
-    file = sys.argv[1]
-    outputFormat = sys.argv[2]
-    if sys.argv[3] is not None:
-        name = sys.argv[3]
-    else:
-        name = "Brian"
-        
+    args = parse_args()
+    file = args.input_file
+    outputFormat = args.output_format
+    name = args.name
+
     print("Starting conversion process", file, outputFormat)
     # call service to convert file
     lines, invalidLines = convertFile(file, outputFormat, name)
