@@ -1,0 +1,22 @@
+{
+  "name": "@mint-csv-converter/apps-script",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c && cp appsscript.json dist/appsscript.json",
+    "typecheck": "tsc --noEmit",
+    "deploy": "pnpm build && clasp push"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "29.0.3",
+    "@rollup/plugin-node-resolve": "16.0.3",
+    "@rollup/plugin-typescript": "12.3.0",
+    "@types/google-apps-script": "2.0.11",
+    "rollup": "4.62.2",
+    "typescript": "5.8.3"
+  },
+  "dependencies": {
+    "tslib": "2.8.1"
+  }
+}

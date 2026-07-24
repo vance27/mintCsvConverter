@@ -15,13 +15,13 @@ This was ported from an original Python implementation; see git history for that
 ## Package layout (pnpm workspace)
 
 - `packages/core` — the conversion engine, ported 1:1 in behavior (plus the fixes above) from the original Python `csvTools`/`main.py`. Dependency-light: `csv-parse`/`csv-stringify` for CSV I/O, otherwise Node stdlib.
-- `packages/automation` — Sheets HTTP client + sync orchestrator (in progress; see plan for phases 3-5).
+- `packages/automation` — Sheets HTTP client + sync orchestrator (see "Google Sheets automation" below).
 
 Root-level tooling: `pnpm-workspace.yaml`, `tsconfig.base.json` (strict mode, extended per-package), `.npmrc` (`save-exact=true`), and `pnpm-workspace.yaml`'s supply-chain settings (`minimumReleaseAge`, `blockExoticSubdeps`, `trustPolicy`, `allowBuilds`) — **dependency versions are pinned exactly, no `^`/`~` ranges**; use `pnpm add --save-exact` (or rely on `.npmrc`) when adding anything new, and update `allowBuilds` deliberately rather than blanket-approving postinstall scripts.
 
 ## Running it
 
-```
+```bash
 cd packages/core
 pnpm build
 node dist/main.js <input_file.csv> EXPENSE_SPLITTING <PayerName>
@@ -31,7 +31,7 @@ Or during development, skip the build step: `pnpm exec tsx src/main.ts <input_fi
 
 Example:
 
-```
+```bash
 node dist/main.js transactions.csv EXPENSE_SPLITTING Brian
 ```
 
@@ -61,6 +61,9 @@ Add a new uppercase key to `personalExclusions` in `CsvConverterFactory` with a 
 
 Add a new `outputFormat` branch in `getConverter` pointing to a new `convertTo*` method following the same `(lines, name) -> [result, invalidLines]` signature.
 
-## In-progress: Google Sheets automation
+## Google Sheets automation
 
-See the active plan for the full design (Apps Script `doPost` endpoint reusing existing `onEdit`/`calculate()` logic, a TS Sheets HTTP client, and a `sync` orchestrator that takes a manually-exported CSV — Playwright-based Citi automation was explicitly ruled out). `packages/automation` is scaffolded but not yet implemented beyond a placeholder.
+Input is always a manually-exported Citi CSV — Playwright-based export automation was considered and explicitly ruled out (bot-detection risk not worth it for this).
+
+- [packages/apps-script/src/Code.ts](packages/apps-script/src/Code.ts) — the existing sheet's Apps Script, logic untouched above the marker comment (type annotations added for local dev only), plus an appended `doPost` Web App endpoint (`addTransactionsForPeriod`) that finds-or-creates the `"<Payer> <Period>"` tab (duplicating `"DUPLICATE ME"` to preserve styling), inserts rows above the `"TOTAL OWING"` marker, and reuses the existing `onSplitTypeChanged`/`calculate()` for defaulting and settle-up math. Apps Script can't run TypeScript directly, so `pnpm build` bundles this to `dist/Code.js` via Rollup — that's what actually gets deployed. See that directory's README for build/deployment steps — deploying is a manual, one-time step in the Apps Script editor or via `clasp`; it can't be scripted from here.
+- `packages/automation` — [sheetsClient.ts](packages/automation/src/sheetsClient.ts) (thin HTTP client for the endpoint above), [sync.ts](packages/automation/src/sync.ts) (orchestrator: imports a CSV via `@mint-csv-converter/core`, groups by transaction month, dedupes against a local sync-state file tracking the newest date already pushed per payer, and POSTs each group). See that package's README for setup/usage. Depends on `@mint-csv-converter/core`'s built `dist/` output — rebuild core after changing it before running automation.

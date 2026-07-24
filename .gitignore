@@ -13,3 +13,9 @@
 node_modules/
 dist/
 *.tsbuildinfo
+
+# clasp (Apps Script) — contains the script ID, kept local-only
+.clasp.json
+
+# Editor
+.vscode/

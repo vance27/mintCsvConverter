@@ -1,0 +1,142 @@
+# Setting up clasp
+
+[`clasp`](https://github.com/google/clasp) is Google's CLI for Apps Script —
+it lets you edit this script's source in the repo (get diffs, git history,
+code review) instead of only in the browser-based Apps Script editor, and
+push changes from the command line.
+
+This package builds `src/Code.ts` (TypeScript) down to plain JS at
+`dist/Code.js` via `pnpm build` (see the main README) — `clasp` here is
+configured to push from `dist/`, never from `src/` directly, since Apps
+Script's runtime can't execute TypeScript.
+
+This is a one-time setup per machine. You only need it if you want to edit
+the script going forward via this repo — copy-pasting `dist/Code.js` into
+the web editor (Option A in the main README) still works fine as a one-off.
+
+## 1. Prerequisites
+
+- Node.js (already required for the rest of this repo).
+- The Google account that owns/can edit the "Expense Splitting" sheet.
+- The Apps Script API enabled for that account: go to
+  <https://script.google.com/home/usersettings> and turn on **Google Apps
+  Script API**. This is a per-account setting, separate from any
+  project-level API enablement — `clasp` will fail with `User has not
+  enabled the Apps Script API` until this is on.
+
+## 2. Install and log in
+
+```bash
+pnpm add -g @google/clasp
+clasp login
+```
+
+This opens a browser OAuth flow. Make sure you authorize with the **same
+Google account** that owns the sheet/script — if you have multiple Google
+accounts signed in, double check which one the browser picks. `clasp login`
+writes credentials to `~/.clasprc.json` (global, not project-specific, and
+not something to commit anywhere).
+
+To confirm which account is logged in later: `clasp login --status`.
+
+## 3. Find the script ID
+
+From the sheet: **Extensions > Apps Script** to open the bound script's
+editor, then the gear icon (**Project Settings**) in the left sidebar.
+Copy the **Script ID** shown there.
+
+## 4. Clone the project (only needed once, to bootstrap)
+
+Clone into a scratch directory first, not directly into
+`packages/apps-script/`, so you can inspect what comes down before touching
+anything in the repo:
+
+```bash
+mkdir -p /tmp/apps-script-clone && cd /tmp/apps-script-clone
+clasp clone <SCRIPT_ID>
+```
+
+This pulls down the real `appsscript.json` manifest (timezone, runtime
+version, webapp config — whatever the project is actually configured with)
+and the live script file. **Don't hand-write `appsscript.json` yourself** —
+get it from a real clone, since a guessed one could silently change your
+project's configuration; compare it against `packages/apps-script/appsscript.json`
+in this repo and reconcile any differences by hand (small file, easy to
+eyeball).
+
+Diff the cloned script file against `pnpm build`'s output
+(`packages/apps-script/dist/Code.js`) before assuming they match, in case
+there are live edits that aren't reflected in `src/Code.ts` yet.
+
+## 5. Wire this repo up to the project
+
+`packages/apps-script/.clasp.json` is already set up with
+`"rootDir": "dist"`, so `clasp` run from this directory pushes/pulls
+`dist/Code.js` + `dist/appsscript.json` (the build output), never
+`src/Code.ts`. Update its `scriptId` if you're pointing this repo at a
+different script than what's already configured:
+
+```json
+{
+  "scriptId": "<SCRIPT_ID>",
+  "rootDir": "dist"
+}
+```
+
+`.clasp.json` is git-ignored (contains your script ID — not a secret on
+`SYNC_TOKEN`'s level, but no reason to commit it either).
+
+## 6. Build and push changes
+
+```bash
+cd packages/apps-script
+pnpm build     # src/Code.ts -> dist/Code.js + dist/appsscript.json
+clasp push     # or: pnpm deploy, which runs both steps
+```
+
+`clasp push` overwrites the live script with what's in `dist/` — review
+your diff of `src/Code.ts` before pushing, same as any other deploy.
+`clasp status` shows what would be pushed without actually pushing.
+
+## 7. Ongoing workflow
+
+- Edit `packages/apps-script/src/Code.ts` in this repo.
+- `pnpm typecheck` for a fast local check without building.
+- `pnpm deploy` (build + `clasp push`) to update the live script.
+- `clasp open` opens the project in the browser editor if you want to
+  eyeball it or run something manually (e.g. the first-time authorization
+  prompt Apps Script shows when a script requests new permissions —
+  `clasp push` alone doesn't trigger that; open the editor and run any
+  function once to grant access after adding new scopes/services).
+
+## 8. Managing the Web App deployment from the CLI (optional)
+
+The main README's deployment steps use the Apps Script editor's **Deploy**
+UI. `clasp` can do this too, and makes it easier to update an *existing*
+deployment (keeping its URL stable) rather than accidentally creating a new
+one:
+
+```bash
+clasp deployments                       # list existing deployments and their IDs
+clasp deploy -i <DEPLOYMENT_ID>          # push a new version to an existing deployment
+clasp deploy                             # create a new deployment (new URL) — avoid unless you mean to
+```
+
+Prefer `clasp deploy -i <existing deployment id>` for routine updates so
+`packages/automation`'s configured `SHEETS_WEBAPP_URL` doesn't need to
+change every time you edit the script.
+
+## Troubleshooting
+
+- **`User has not enabled the Apps Script API`** — step 1 above; this is
+  per-account, easy to miss.
+- **`clasp push` succeeds but the sheet doesn't reflect the change** —
+  confirm you ran `pnpm build` first (pushing stale `dist/` output is a
+  common gotcha), that `.clasp.json`'s script ID matches the sheet's
+  actual bound script (step 3), and that you're logged into the right
+  account (`clasp login --status`).
+- **Permission/authorization prompt on first run of a new function** —
+  expected the first time a script requests a new scope (e.g. first time
+  `doPost`/`PropertiesService` is exercised); open the project
+  (`clasp open`) and run the function once from the editor to grant access
+  interactively, which `clasp push` alone can't do.
