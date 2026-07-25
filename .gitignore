@@ -14,6 +14,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 
+# SQLite datastore (receipts) — working DB is local-only; the JSON snapshot is what gets committed
+*.db
+*.db-journal
+
 # clasp (Apps Script) — contains the script ID, kept local-only
 .clasp.json
 

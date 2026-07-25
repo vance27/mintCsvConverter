@@ -105,6 +105,8 @@ importers:
         specifier: 6.8.1
         version: 6.8.1
 
+  packages/receipts: {}
+
 packages:
 
   '@babel/code-frame@7.29.7':
