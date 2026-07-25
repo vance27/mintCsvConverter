@@ -261,23 +261,26 @@ function columnLetter(column: number): string {
 export function loadSheetsClientConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Omit<SheetsClientConfig, 'sheets' | 'script'> {
   const spreadsheetId = env.SPREADSHEET_ID;
   const scriptId = env.APPS_SCRIPT_SCRIPT_ID;
-  const clientSecretPath = env.GOOGLE_OAUTH_CLIENT_SECRET_PATH;
+  const clientId = env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = env.GOOGLE_OAUTH_CLIENT_SECRET;
   if (!spreadsheetId) {
     throw new Error('Missing SPREADSHEET_ID environment variable');
   }
   if (!scriptId) {
     throw new Error('Missing APPS_SCRIPT_SCRIPT_ID environment variable');
   }
-  if (!clientSecretPath) {
-    throw new Error('Missing GOOGLE_OAUTH_CLIENT_SECRET_PATH environment variable');
+  if (!clientId) {
+    throw new Error('Missing GOOGLE_OAUTH_CLIENT_ID environment variable');
+  }
+  if (!clientSecret) {
+    throw new Error('Missing GOOGLE_OAUTH_CLIENT_SECRET environment variable');
   }
   return { spreadsheetId, scriptId };
 }
 
 export function defaultSheetsClient(env: NodeJS.ProcessEnv = process.env): SheetsClient {
   const { spreadsheetId, scriptId } = loadSheetsClientConfigFromEnv(env);
-  const clientSecretPath = env.GOOGLE_OAUTH_CLIENT_SECRET_PATH!;
-  const auth = loadSavedCredentialsOrThrow(clientSecretPath);
+  const auth = loadSavedCredentialsOrThrow(env.GOOGLE_OAUTH_CLIENT_ID!, env.GOOGLE_OAUTH_CLIENT_SECRET!);
   return new SheetsClient({
     spreadsheetId,
     scriptId,

@@ -15,31 +15,35 @@ spreadsheet mechanics), then finalizing them via the **Apps Script API**
    OAuth credentials — see
    [`packages/apps-script/CLASP_SETUP.md`](../apps-script/CLASP_SETUP.md#9-one-time-setup-for-the-sync-api)
    for the full walkthrough (GCP project, enabling the Apps Script API,
-   OAuth consent screen/client). You'll end up with a downloaded OAuth
-   client secret JSON file and this script's ID.
-2. Run the one-time interactive authorization (opens your browser once,
+   OAuth consent screen, an OAuth Desktop app client). You'll end up with
+   that client's ID and secret (copy them — Google only shows a client
+   secret's value once, at creation) and this script's ID.
+
+2. Create a git-ignored `.env` file (in this directory, or wherever you'll
+   run commands from) with:
+
+   ```
+   SPREADSHEET_ID=<the sheet's ID, from its URL>
+   APPS_SCRIPT_SCRIPT_ID=<same as .clasp.json's scriptId>
+   GOOGLE_OAUTH_CLIENT_ID=<the OAuth Desktop app client's ID>
+   GOOGLE_OAUTH_CLIENT_SECRET=<its secret>
+   ```
+
+   There's no separate client-secret JSON file to manage — just these two
+   values. Node's built-in `--env-file` flag loads this without adding a
+   `dotenv` dependency (Node 20.6+); `.env` is already covered by the
+   repo's `.gitignore` no matter which directory it's in.
+
+3. Run the one-time interactive authorization (opens your browser once,
    saves a reusable token locally — see `src/scripts/authorize.ts`):
 
    ```bash
-   GOOGLE_OAUTH_CLIENT_SECRET_PATH=/path/to/client_secret.json \
-     pnpm exec tsx src/scripts/authorize.ts
+   node --env-file=.env --import tsx src/scripts/authorize.ts
    ```
 
    This saves credentials to `~/.config/mint-csv-converter/google-token.json`
    (git-ignored territory — never commit it). Re-run this if the token is
    ever revoked or deleted.
-
-3. Create a git-ignored `.env` file (in this directory, or wherever you'll
-   run the command from) with:
-
-   ```
-   SPREADSHEET_ID=<the sheet's ID, from its URL>
-   APPS_SCRIPT_SCRIPT_ID=<same as .clasp.json's scriptId>
-   GOOGLE_OAUTH_CLIENT_SECRET_PATH=/path/to/client_secret.json
-   ```
-
-   Node's built-in `--env-file` flag loads this without adding a `dotenv`
-   dependency (Node 20.6+).
 
 4. Build `packages/core` first — this package resolves
    `@mint-csv-converter/core` via its published `dist/`, not the TS source

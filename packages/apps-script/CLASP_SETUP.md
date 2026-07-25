@@ -150,28 +150,46 @@ is one-time GCP Console setup, not something `clasp`/this repo can drive:
    Library → search "Apps Script API" → Enable. (Free — no billing
    account needed for this or the Sheets API at personal-project usage
    scale.)
-3. **Create an OAuth consent screen**: APIs & Services → OAuth consent
+3. **Enable the Sheets API** too, same place: APIs & Services → Library →
+   search "Google Sheets API" → Enable. `packages/automation` calls this
+   directly (not through Apps Script) for row mechanics, so it needs to be
+   enabled separately from the Apps Script API above — easy to miss, since
+   nothing else in this setup prompts for it. If you skip this, the first
+   sync run fails with `Google Sheets API has not been used in project
+   <number> before or it is disabled`, with a direct enable link in the
+   error; enabling it there works just as well, just wait a minute or two
+   for it to propagate before retrying.
+4. **Create an OAuth consent screen**: APIs & Services → OAuth consent
    screen → External → Testing mode (fine for personal use — avoids
    Google's app-verification process since only you'll ever authorize it)
    → add your own account as a test user.
-4. **Create an OAuth 2.0 Client ID**, type **Desktop app** (APIs &
-   Services → Credentials → Create Credentials). Download the client
-   secret JSON — this is a credential, keep it local, never commit it
-   (same treatment `.clasp.json` gets).
-5. **Deploy as an API Executable**: Apps Script editor → Deploy → New
+5. **Create an OAuth 2.0 Client ID**, type **Desktop app** (APIs &
+   Services → Credentials → Create Credentials). Copy its **client ID**
+   and **client secret** — this is a credential, keep it local, never
+   commit it (same treatment `.clasp.json` gets). Google only shows a
+   client secret's value once, at creation (or right after clicking "Add
+   Secret" to generate a new one) — if you lose it, generate a new secret
+   rather than trying to retrieve the old one.
+6. **Deploy as an API Executable**: Apps Script editor → Deploy → New
    deployment → type "API Executable" → access "Only myself" → Deploy.
-6. Check Project Settings → "Show `appsscript.json` manifest file" for
+   Note the **deployment ID** it gives you (also visible via
+   `clasp deployments`) — the Apps Script API's `scripts.run` needs this,
+   not the project's plain script ID (its own docs call this out: "As
+   multiple executable APIs can be deployed for the same script, this
+   field should be populated with the deployment ID instead of script
+   ID"). This is what `packages/automation`'s `APPS_SCRIPT_SCRIPT_ID` env
+   var should actually be set to, despite the name.
+7. Check Project Settings → "Show `appsscript.json` manifest file" for
    the auto-populated `oauthScopes` list (Apps Script detects these from
    what services the code uses) — `packages/automation`'s one-time
    `authorize` script needs to request this same scope list.
-7. Run `packages/automation`'s `authorize` script once (see that
-   package's README) using the downloaded client secret from step 4 and
-   this script's ID (same as `.clasp.json`'s `scriptId`) — that captures
-   and stores the OAuth token `packages/automation` uses on every sync
-   run afterward.
+8. Run `packages/automation`'s `authorize` script once (see that
+   package's README) using the client ID/secret from step 5 — that
+   captures and stores the OAuth token `packages/automation` uses on
+   every sync run afterward.
 
 Prefer `clasp deploy -i <existing deployment id>` for routine updates so
-`packages/automation`'s configured `SHEETS_WEBAPP_URL` doesn't need to
+`packages/automation`'s configured `APPS_SCRIPT_SCRIPT_ID` doesn't need to
 change every time you edit the script.
 
 ## Troubleshooting

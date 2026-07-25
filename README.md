@@ -14,8 +14,8 @@ details. Three packages:
 | Package | What it is |
 | --- | --- |
 | [`packages/core`](packages/core) | The conversion engine and its CLI — reads a Citi export CSV, produces a valid/invalid split CSV. No external systems involved. |
-| [`packages/automation`](packages/automation) | Reuses `core` and pushes the valid rows straight into the Google Sheet via the endpoint below, instead of copy-pasting the CSV output by hand. |
-| [`packages/apps-script`](packages/apps-script) | The Google Apps Script bound to the sheet — your existing checkbox/settle-up logic, plus an HTTP endpoint `automation` calls into. Deployed manually via the Apps Script editor, not from this repo. |
+| [`packages/automation`](packages/automation) | Reuses `core` and pushes the valid rows straight into the Google Sheet — via the Sheets API for row mechanics, then the Apps Script API to trigger the checkbox/settle-up logic below — instead of copy-pasting the CSV output by hand. Authenticates as you via OAuth2 (one-time interactive consent, token stored locally). |
+| [`packages/apps-script`](packages/apps-script) | The Google Apps Script bound to the sheet — your existing checkbox/settle-up logic, plus a `finalizeAddedRows` function `automation` calls via the Apps Script API. Deployed manually (as an API Executable, access restricted to you) via the Apps Script editor/`clasp`, not automatically from this repo. |
 
 ## Quick start — just convert a CSV
 
@@ -33,15 +33,22 @@ node dist/main.js transactions.csv EXPENSE_SPLITTING Brian
 
 ## Quick start — convert and push to the sheet
 
-Requires the Apps Script endpoint to be deployed first — see
-[`packages/apps-script/README.md`](packages/apps-script/README.md), then
+Requires the Apps Script project to be deployed as an API Executable
+first — see [`packages/apps-script/README.md`](packages/apps-script/README.md)
+and its [`CLASP_SETUP.md`](packages/apps-script/CLASP_SETUP.md), then
 [`packages/automation/README.md`](packages/automation/README.md) for
-configuring and running `sync`.
+one-time OAuth authorization and running `sync`.
 
 ## Development
 
+Task orchestration is via [Nx](https://nx.dev) (local caching only, no Nx
+Cloud) on top of the pnpm workspace — see [CLAUDE.md](CLAUDE.md) for
+details.
+
 ```bash
 pnpm install
-pnpm -r typecheck
-pnpm -r test
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm test
 ```
