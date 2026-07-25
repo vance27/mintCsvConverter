@@ -22,6 +22,22 @@
     },
     "lint": {
       "dependsOn": ["prisma-generate"]
+    },
+    "seed": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["prisma-generate"],
+      "options": {
+        "command": "node --import tsx packages/receipts/src/scripts/seed.ts"
+      }
+    },
+    "ingest": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["prisma-generate"],
+      "options": {
+        "command": "node --import tsx packages/receipts/src/scripts/ingest.ts"
+      }
     }
   }
 }
