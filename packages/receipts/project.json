@@ -11,6 +11,14 @@
         "command": "prisma generate"
       }
     },
+    "prisma-migrate": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "packages/receipts",
+        "command": "prisma migrate deploy"
+      }
+    },
     "build": {
       "dependsOn": ["prisma-generate", "^build"]
     },
@@ -26,7 +34,7 @@
     "seed": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["prisma-generate"],
+      "dependsOn": ["prisma-generate", "prisma-migrate"],
       "options": {
         "command": "node --import tsx packages/receipts/src/scripts/seed.ts"
       }
@@ -34,7 +42,7 @@
     "ingest": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["prisma-generate"],
+      "dependsOn": ["prisma-generate", "prisma-migrate"],
       "options": {
         "command": "node --import tsx packages/receipts/src/scripts/ingest.ts"
       }
@@ -42,7 +50,7 @@
     "snapshot": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["prisma-generate"],
+      "dependsOn": ["prisma-generate", "prisma-migrate"],
       "options": {
         "command": "node --import tsx packages/receipts/src/scripts/snapshot.ts"
       }
@@ -50,7 +58,7 @@
     "restore": {
       "executor": "nx:run-commands",
       "cache": false,
-      "dependsOn": ["prisma-generate"],
+      "dependsOn": ["prisma-generate", "prisma-migrate"],
       "options": {
         "command": "node --import tsx packages/receipts/src/scripts/restore.ts"
       }

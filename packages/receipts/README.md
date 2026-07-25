@@ -11,18 +11,36 @@ UI yet — that's Phase 3).
 
 ## Setup
 
-1. **Install Ollama and pull a vision model** (one-time, per machine):
+1. **Install Ollama, run it as a background service, and pull a vision
+   model** (one-time, per machine):
 
    ```bash
    brew install ollama
+   brew services start ollama   # runs the server via launchd — survives logout/reboot, no terminal tab to keep open
    ollama pull llama3.2-vision
    ```
 
-   Ollama runs a local background server at `http://localhost:11434` —
-   nothing leaves your machine, no cloud account, no per-call cost. The
-   `ollama` npm dependency here just makes HTTP calls to that server.
+   **`llama3.2-vision` is a large download — about 7.8 GB** (the model's
+   main blob is 7,816,574,592 bytes, confirmed from a real pull), so budget
+   time and disk space for it; it only needs to be pulled once. Everything
+   Ollama downloads lives under `~/.ollama/models/` (`blobs/` for the
+   actual weight files, `manifests/` mapping model names/tags to them).
+
+   Ollama runs a local server at `http://localhost:11434` — nothing
+   leaves your machine, no cloud account, no per-call cost. `brew
+   services start` (rather than running `ollama serve` directly) is what
+   avoids needing a dedicated terminal window: it's managed by `launchd`
+   as `homebrew.mxcl.ollama`, starts automatically on login, and keeps
+   running in the background. Check it's up any time with `curl
+   http://localhost:11434` (expect `Ollama is running`) or `brew services
+   list`; stop it with `brew services stop ollama` if you ever need to.
+   The `ollama` npm dependency here just makes HTTP calls to that server.
    Override the model with `OLLAMA_MODEL`, or the host with `OLLAMA_HOST`,
    if needed.
+
+   (If you'd rather not use `brew services` — e.g. non-Homebrew installs —
+   `ollama serve` still works, just backgrounded and detached from the
+   shell: `nohup ollama serve > /tmp/ollama.log 2>&1 & disown`.)
 
 2. **Seed participants** (one-time; `ingestReceipt` deliberately throws on
    an unknown payer name rather than silently creating one, so a typo
@@ -32,7 +50,14 @@ UI yet — that's Phase 3).
    nx run @mint-csv-converter/receipts:seed -- Brian Patrice
    ```
 
-3. That's it — no `.env` is required. The datastore defaults to
+   `seed`/`ingest`/`snapshot`/`restore` all `dependsOn` a `prisma-migrate`
+   Nx target (`prisma migrate deploy`, non-interactive and a no-op if
+   nothing's pending), so the first run of any of them automatically
+   creates/updates `~/.config/mint-csv-converter/receipts.db`'s schema —
+   no separate migration step to remember. Run it standalone if you ever
+   want to: `nx run @mint-csv-converter/receipts:prisma-migrate`.
+
+3. No `.env` is required beyond that — the datastore defaults to
    `~/.config/mint-csv-converter/receipts.db` (override with
    `DATABASE_URL`), matching the automation package's config-directory
    convention.
