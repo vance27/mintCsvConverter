@@ -37,6 +37,20 @@ export function aggregateSplits(lines: AggregateLine[], participants: string[]):
   return largestRemainderRound(rawPercents);
 }
 
+/**
+ * Splits 100% evenly across `count` participants (e.g. [50, 50] for 2,
+ * [34, 33, 33] for 3) — the default split for an item nobody has set a
+ * typical split for yet. Any remainder goes to the earliest entries.
+ */
+export function evenPercentages(count: number): number[] {
+  if (count <= 0) {
+    return [];
+  }
+  const base = Math.floor(100 / count);
+  const remainder = 100 - base * count;
+  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+}
+
 function largestRemainderRound(rawPercents: { participant: string; raw: number }[]): Record<string, number> {
   const floored = rawPercents.map((entry) => ({
     participant: entry.participant,

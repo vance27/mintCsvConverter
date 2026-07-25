@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { aggregateSplits, type AggregateLine } from './aggregate.js';
+import { aggregateSplits, evenPercentages, type AggregateLine } from './aggregate.js';
 
 const PARTICIPANTS = ['Brian', 'Patrice'];
 
@@ -44,5 +44,26 @@ describe('aggregateSplits', () => {
   it('handles a zero-total receipt without dividing by zero', () => {
     const lines: AggregateLine[] = [{ lineTotal: 0, splits: { Brian: 50, Patrice: 50 } }];
     expect(aggregateSplits(lines, PARTICIPANTS)).toEqual({ Brian: 0, Patrice: 0 });
+  });
+});
+
+describe('evenPercentages', () => {
+  it('splits evenly with no remainder', () => {
+    expect(evenPercentages(2)).toEqual([50, 50]);
+    expect(evenPercentages(4)).toEqual([25, 25, 25, 25]);
+  });
+
+  it('distributes the remainder to the earliest entries', () => {
+    expect(evenPercentages(3)).toEqual([34, 33, 33]);
+  });
+
+  it('sums to 100 for any count', () => {
+    for (const count of [1, 2, 3, 5, 7]) {
+      expect(evenPercentages(count).reduce((a, b) => a + b, 0)).toBe(100);
+    }
+  });
+
+  it('returns an empty array for zero participants', () => {
+    expect(evenPercentages(0)).toEqual([]);
   });
 });

@@ -6,3 +6,6 @@ export { renderPdfPages } from './renderPdf.js';
 export { createOllamaClient, defaultOllamaModel, type VisionChatClient } from './ollamaClient.js';
 export { createPrismaClient, getPrisma, defaultDatabaseUrl } from './db.js';
 export { extractReceipt, buildExtractionPrompt, type ExtractReceiptOptions } from './extractReceipt.js';
+export { ingestReceipt, type IngestOptions, type IngestDeps, type IngestResult } from './ingest.js';
+export { seedParticipants } from './seed.js';
+export { retainReceiptSource, defaultReceiptsBaseDir } from './receiptStorage.js';

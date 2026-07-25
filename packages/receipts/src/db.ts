@@ -3,6 +3,8 @@ import { dirname } from 'node:path';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { PrismaClient } from './generated/prisma/client.js';
 
+export type { PrismaClient } from './generated/prisma/client.js';
+
 /**
  * Default datastore location — `~/.config/mint-csv-converter/receipts.db`,
  * mirroring the automation package's `~/.config/mint-csv-converter/`
