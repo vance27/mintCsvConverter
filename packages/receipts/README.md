@@ -108,6 +108,12 @@ via the `prisma-generate` Nx target (`project.json`) — the generated client
 under `src/generated/` is git-ignored and eslint-ignored, regenerated from
 `prisma/schema.prisma` on demand.
 
+Browse/edit the datastore directly with Prisma Studio:
+
+```bash
+nx run @mint-csv-converter/receipts:prisma-studio
+```
+
 ### Backups
 
 ```bash

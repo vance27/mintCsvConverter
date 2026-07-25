@@ -1,5 +1,10 @@
 {
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "metadata": {
+    "targetGroups": {
+      "prisma": ["prisma-generate", "prisma-migrate", "prisma-studio"]
+    }
+  },
   "targets": {
     "prisma-generate": {
       "executor": "nx:run-commands",
@@ -17,6 +22,14 @@
       "options": {
         "cwd": "packages/receipts",
         "command": "prisma migrate deploy"
+      }
+    },
+    "prisma-studio": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "packages/receipts",
+        "command": "prisma studio"
       }
     },
     "build": {
