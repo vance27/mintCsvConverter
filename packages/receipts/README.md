@@ -17,14 +17,21 @@ UI yet — that's Phase 3).
    ```bash
    brew install ollama
    brew services start ollama   # runs the server via launchd — survives logout/reboot, no terminal tab to keep open
-   ollama pull llama3.2-vision
+   ollama pull qwen2.5vl:7b
    ```
 
-   **`llama3.2-vision` is a large download — about 7.8 GB** (the model's
-   main blob is 7,816,574,592 bytes, confirmed from a real pull), so budget
-   time and disk space for it; it only needs to be pulled once. Everything
-   Ollama downloads lives under `~/.ollama/models/` (`blobs/` for the
-   actual weight files, `manifests/` mapping model names/tags to them).
+   **Not `llama3.2-vision`** — its architecture (`mllama`) was dropped
+   when Ollama rewrote its inference engine around v0.30.0 and was never
+   implemented in the new one; every current Ollama version fails to load
+   it (`unknown model architecture: 'mllama'`, confirmed against a real
+   pull). Qwen2.5-VL uses a currently-supported architecture and is
+   specifically tuned for documents/OCR/structured visual content, which
+   is a better fit for receipts anyway.
+
+   **This is still a large download — about 6 GB** — so budget time and
+   disk space; it only needs to be pulled once. Everything Ollama
+   downloads lives under `~/.ollama/models/` (`blobs/` for the actual
+   weight files, `manifests/` mapping model names/tags to them).
 
    Ollama runs a local server at `http://localhost:11434` — nothing
    leaves your machine, no cloud account, no per-call cost. `brew

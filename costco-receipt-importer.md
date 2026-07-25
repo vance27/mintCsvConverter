@@ -147,7 +147,8 @@ below) carry only benign item/price/split data.
   vision chat, **injectable via an interface** (same testability pattern
   as `SheetsClient`'s `SpreadsheetsClient`/`ScriptClient`), so specs pass
   a fake and never hit a real model. Model name from env
-  (`OLLAMA_MODEL`, default e.g. `llama3.2-vision`) — swappable.
+  (`OLLAMA_MODEL`, default `qwen2.5vl:7b` — not `llama3.2-vision`, whose
+  architecture Ollama dropped support for around v0.30.0) — swappable.
 - `src/renderPdf.ts` — receipts are **PDFs**. Render each page to a PNG
   buffer with `pdf-to-img` (pure JS). A Costco receipt is usually one
   page; handle multi-page by rendering all and feeding them together to
@@ -256,7 +257,7 @@ aggregate for eyeballing against the real receipt.
 Ollama isn't a Docker image you have to wire up — it's a small native app
 that runs a local background server on `http://localhost:11434`. On macOS:
 `brew install ollama` (or the download from ollama.com), then `ollama pull
-llama3.2-vision` once to fetch the model weights. After that the `ollama`
+qwen2.5vl:7b` once to fetch the model weights. After that the `ollama`
 npm package in `packages/receipts` just makes HTTP calls to that local
 server — nothing leaves your machine, no cloud account, no per-call cost.
 (A Docker image exists too, but it's not needed on macOS.) Exact steps go
