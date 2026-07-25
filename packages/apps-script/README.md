@@ -1,13 +1,17 @@
-# Apps Script — Sheets write endpoint
+# Apps Script — settle-up finalize entry point
 
 `src/Code.ts` is your existing "Expense Splitting" sheet's Apps Script
 (checkbox/percent defaulting on edit, settle-up recalculation) — logic
 unmodified, with type annotations added (via `@types/google-apps-script`)
-for local IntelliSense/type-checking — plus a new HTTP entry point appended
-at the bottom (everything below the `// --- Everything below this line is
-new ---` marker) so `packages/automation`'s sync tooling can push rows into
-the sheet the same way a manual paste + dropdown selection does today,
-without reimplementing any of the existing math in TypeScript.
+for local IntelliSense/type-checking — plus one new function,
+`finalizeAddedRows` (in `src/syncApi.ts`), called via the **Apps Script
+API** (`scripts.run`, not a Web App). `packages/automation` writes raw row
+data directly via the **Sheets API** (that's what it's built for — no
+reason to route generic spreadsheet writes through Apps Script), then
+calls `finalizeAddedRows` once to apply this sheet's checkbox/percent
+defaulting and settle-up recalculation to those rows, the same way a
+manual paste + dropdown selection would — without reimplementing that math
+in TypeScript.
 
 Apps Script's V8 runtime doesn't run TypeScript directly, so `pnpm build`
 bundles/transpiles `src/Code.ts` down to plain JS at `dist/Code.js`
@@ -46,50 +50,38 @@ that aren't reflected in this file.
 See [CLASP_SETUP.md](CLASP_SETUP.md) for the full one-time setup (install,
 login, enabling the Apps Script API, cloning, wiring `clasp` up to this
 directory) and the ongoing edit/push workflow, including how to update an
-existing Web App deployment from the CLI without changing its URL.
+existing deployment from the CLI without changing its ID.
 `.clasp.json` here is already configured with `"rootDir": "dist"`, so
-`pnpm build && clasp push` (or `pnpm deploy`, which does both) pushes the
-compiled output, never `src/Code.ts` directly.
+`pnpm build && clasp push` (or `nx deploy @mint-csv-converter/apps-script`,
+which does both, plus re-points the deployment at the new version) pushes
+the compiled output, never `src/Code.ts` directly.
 
-## One-time setup after deploying the code
+## One-time setup for the sync API
 
-1. **Shared secret.** In the Apps Script editor: Project Settings > Script
-   Properties > add a property named `SYNC_TOKEN` with a random value, e.g.
-   generate one with `openssl rand -hex 32`. This is what `doPost` checks
-   against the `token` field in each request — treat it like a password.
-2. **Deploy as a Web App.** Deploy > New deployment > type "Web app" >
-   Execute as "Me" > Who has access "Anyone with the link" > Deploy. Copy
-   the Web App URL it gives you — that's what `packages/automation` will
-   POST to.
-   - When you edit the script later, use **Manage deployments > Edit >
-     new version** on the *existing* deployment rather than creating a
-     brand-new deployment, so the URL stays stable and you don't have to
-     update it in `packages/automation`'s config every time.
-3. Put the Web App URL and the `SYNC_TOKEN` value somewhere `packages/automation`
-   can read locally (git-ignored `.env`, not committed) — see that package's
-   README.
+`finalizeAddedRows` is called via the Apps Script API, not a Web App — this
+needs a real Google Cloud project and OAuth2 credentials, not a Script
+Property shared secret. Full steps (GCP project, enabling the Apps Script
+API, OAuth consent screen/client, deploying as "API Executable") are in
+[CLASP_SETUP.md](CLASP_SETUP.md#9-one-time-setup-for-the-sync-api) — the
+short version:
 
-## Testing it directly (before any TypeScript touches it)
+1. Switch this script's associated Google Cloud project to a real
+   *standard* project (Project Settings → Google Cloud Platform (GCP)
+   Project), enable the **Apps Script API** there, and create an OAuth
+   client (see CLASP_SETUP.md for exact steps — this is a one-time GCP
+   Console setup, not something `clasp`/this repo can automate).
+2. **Deploy → New deployment → API Executable**, access "Only myself".
+3. Run `packages/automation`'s one-time `authorize` script once (see that
+   package's README) to capture a stored OAuth token — that's what
+   `packages/automation` uses to call `finalizeAddedRows`, no Script
+   Property/shared-secret setup needed on this side at all.
 
-```bash
-curl -X POST '<WEB_APP_URL>' \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "token": "<SYNC_TOKEN>",
-    "payerName": "Brian",
-    "periodLabel": "07/26",
-    "rows": [
-      ["Chipotle Mexican Grill 07/01/2026", "Brian", "28.18", "Equally"],
-      ["Costco Wholesale 07/02/2026", "Brian", "150.00", "Variably"]
-    ]
-  }'
-```
+## Testing it directly
 
-Expect `{"ok":true,"result":{"sheetName":"Brian 07/26","rowsAdded":2}}` back,
-a `"Brian 07/26"` tab created (or reused) with the same styling as your
-other tabs, the two new rows showing real checkboxes/percent cells (not raw
-text), and the settle-up summary below "TOTAL OWING" recalculated.
-
-Row shape sent in `rows` is `[description, payerName, amount, splitType]`
-(columns A-D) — columns E onward are computed server-side by the existing
-`onSplitTypeChanged`, not supplied by the caller.
+`finalizeAddedRows` requires OAuth (see above), so it's not curl-able like
+a Web App would be. Quickest manual check without wiring up
+`packages/automation` fully: `clasp run finalizeAddedRows --params
+'["Brian 07/26", 2, 1]'` (your own `clasp login` session is enough for
+this — see [clasp's `run` docs](https://github.com/google/clasp/blob/master/docs/run.md)).
+For a real end-to-end check, use `packages/automation`'s `sync` command
+against a test export — see that package's README.

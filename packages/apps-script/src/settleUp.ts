@@ -85,14 +85,22 @@ export function buildDebtMatrix(
       const payerColumn = PARTICIPANT_COLUMN_OFFSET + payerIndex + 1;
       const participantSplitRange = sheet.getRange(transactionRow, payerColumn);
       // The cell holds a checkbox (boolean) for an equally-split row or a
-      // percentage share (number) for a variably-split row.
-      const participantSplitValue = participantSplitRange.getValue() as number | boolean;
+      // percentage share for a variably-split row — a string like "50%"
+      // (onSplitTypeChanged's default, and what PERCENT_VALIDATION requires
+      // a human to type), not a bare number.
+      const participantSplitValue = participantSplitRange.getValue() as boolean | string;
       if (isEquallySplit && participantSplitValue == true) {
         const owedAmount = amount / equallySplitParticipantCount;
         debtMatrix[payerIndex][payeeIndex] += owedAmount;
-      } else if (isVariablySplit && participantSplitValue != 0) {
-        const owedAmount = (Number(participantSplitValue) / totalVariableShares) * amount;
-        debtMatrix[payerIndex][payeeIndex] += owedAmount;
+      } else if (isVariablySplit) {
+        const share = parseFloat(String(participantSplitValue));
+        // Guard against NaN (e.g. a stray/blank cell): letting it into the
+        // matrix would poison every downstream sum, and simplifyDebts'
+        // convergence check (Math.abs(x) < 0.005) never terminates for NaN.
+        if (!Number.isNaN(share) && share !== 0) {
+          const owedAmount = (share / totalVariableShares) * amount;
+          debtMatrix[payerIndex][payeeIndex] += owedAmount;
+        }
       }
     }
   }

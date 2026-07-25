@@ -26,5 +26,19 @@ allowBuilds:
 # untrusted old version, force resolution to a trusted 7.x release
 # instead; semver's basic comparison API @babel/core relies on is stable
 # across that boundary.
+#
+# googleapis-common (a dependency of @googleapis/script and
+# @googleapis/sheets) exactly pins google-auth-library@10.5.0, while
+# @google-cloud/local-auth wants ^9.0.0 — left alone, pnpm would install
+# two separate copies of OAuth2Client. That's a real problem, not just
+# bloat: OAuth2Client has private members, so TypeScript treats two
+# separately-installed copies (even identical versions) as nominally
+# incompatible, and a client built from one copy can't be passed where
+# the other is expected. Force everyone onto googleapis-common's exact
+# version — local-auth's usage (constructing an OAuth2Client, exchanging
+# a code for tokens, setCredentials) is basic, long-stable OAuth2Client
+# API, unlikely to have changed in a way that matters between 9.x and
+# 10.5.0.
 overrides:
   semver: 7.8.4
+  google-auth-library: 10.5.0

@@ -4,25 +4,44 @@ Pushes a manually-exported Citi CSV straight into the Google Sheet, instead
 of running the core converter's CLI and copy-pasting the output CSV by
 hand. Reuses `@mint-csv-converter/core`'s import/convert logic unchanged;
 this package only adds grouping-by-month, dedupe against previous runs, and
-the HTTP call to the deployed Apps Script endpoint (see
-`packages/apps-script/README.md` for deploying that first).
+writing rows into the sheet — via the **Sheets API** directly (generic
+spreadsheet mechanics), then finalizing them via the **Apps Script API**
+(`scripts.run`, calling `finalizeAddedRows` — see
+`packages/apps-script/README.md`, which needs to be deployed first).
 
 ## Setup
 
-1. Deploy the Apps Script Web App (see `packages/apps-script/README.md`) and
-   have its URL and `SYNC_TOKEN` ready.
-2. Create a git-ignored `.env` file (in this directory, or wherever you'll
+1. Deploy the Apps Script project as an **API Executable** and set up its
+   OAuth credentials — see
+   [`packages/apps-script/CLASP_SETUP.md`](../apps-script/CLASP_SETUP.md#9-one-time-setup-for-the-sync-api)
+   for the full walkthrough (GCP project, enabling the Apps Script API,
+   OAuth consent screen/client). You'll end up with a downloaded OAuth
+   client secret JSON file and this script's ID.
+2. Run the one-time interactive authorization (opens your browser once,
+   saves a reusable token locally — see `src/scripts/authorize.ts`):
+
+   ```bash
+   GOOGLE_OAUTH_CLIENT_SECRET_PATH=/path/to/client_secret.json \
+     pnpm exec tsx src/scripts/authorize.ts
+   ```
+
+   This saves credentials to `~/.config/mint-csv-converter/google-token.json`
+   (git-ignored territory — never commit it). Re-run this if the token is
+   ever revoked or deleted.
+
+3. Create a git-ignored `.env` file (in this directory, or wherever you'll
    run the command from) with:
 
    ```
-   SHEETS_WEBAPP_URL=https://script.google.com/macros/s/.../exec
-   SHEETS_SYNC_TOKEN=<the SYNC_TOKEN you set as an Apps Script property>
+   SPREADSHEET_ID=<the sheet's ID, from its URL>
+   APPS_SCRIPT_SCRIPT_ID=<same as .clasp.json's scriptId>
+   GOOGLE_OAUTH_CLIENT_SECRET_PATH=/path/to/client_secret.json
    ```
 
    Node's built-in `--env-file` flag loads this without adding a `dotenv`
    dependency (Node 20.6+).
 
-3. Build `packages/core` first — this package resolves
+4. Build `packages/core` first — this package resolves
    `@mint-csv-converter/core` via its published `dist/`, not the TS source
    directly, so `pnpm --filter @mint-csv-converter/core build` needs to be
    re-run after any core changes before running automation.
@@ -59,12 +78,16 @@ reprocess a full export from scratch.
 3. Runs the remaining rows through `CsvConverterFactory.convertToExpenseSplitting`
    (unchanged — same exclusion/classification logic as the CLI), grouped by
    transaction month.
-4. For each month group with valid rows, POSTs `[description, payerName,
-   amount, splitType]` (columns A-D only — E onward are computed
-   server-side by the existing Apps Script logic) to the Apps Script
-   endpoint, which finds-or-creates that period's tab and applies the same
-   checkbox/percent defaulting and settle-up recalculation a manual entry
-   would.
+4. For each month group with valid rows, `SheetsClient.addTransactionsForPeriod`
+   writes `[description, payerName, amount, splitType]` (columns A-D only —
+   E onward are computed server-side) into that period's tab via the
+   **Sheets API** (finding it or duplicating "DUPLICATE ME" if it doesn't
+   exist yet), then calls the Apps Script API's `finalizeAddedRows` to
+   apply the same checkbox/percent defaulting and settle-up recalculation
+   a manual entry would. If that finalize call fails after the Sheets API
+   write already succeeded, it attempts a best-effort compensating
+   rollback (deletes the rows it just inserted, or the whole tab if it was
+   freshly created) before re-throwing — see `sheetsClient.ts` for details.
 5. Writes excluded (invalid) rows to a local CSV via `ExportFileToLines`,
    same safety net as the core CLI's invalid-rows output.
 6. Updates the sync-state file with the newest transaction date seen in

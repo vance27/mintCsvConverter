@@ -64,6 +64,12 @@ export default defineConfig(
     files: ['**/*.spec.ts'],
     rules: {
       '@typescript-eslint/require-await': 'off',
+      // expect(mockFn).toHaveBeenCalledWith(...) extracts a method
+      // reference without calling it — the rule can't tell that apart from
+      // an unsafe extract-and-call-later pattern, but vitest's `expect`
+      // only ever inspects the mock's recorded calls, never invokes it
+      // with a different `this`.
+      '@typescript-eslint/unbound-method': 'off',
     },
   },
 );

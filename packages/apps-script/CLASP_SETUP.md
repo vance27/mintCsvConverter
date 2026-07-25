@@ -83,15 +83,16 @@ different script than what's already configured:
 }
 ```
 
-`.clasp.json` is git-ignored (contains your script ID — not a secret on
-`SYNC_TOKEN`'s level, but no reason to commit it either).
+`.clasp.json` is git-ignored (contains your script ID — a credential-
+adjacent value, no reason to commit it).
 
 ## 6. Build and push changes
 
 ```bash
 cd packages/apps-script
 pnpm build     # src/Code.ts -> dist/Code.js + dist/appsscript.json
-clasp push     # or: pnpm deploy, which runs both steps
+clasp push     # or: nx deploy @mint-csv-converter/apps-script, which runs both
+               # steps plus re-points the API Executable deployment (see step 8)
 ```
 
 `clasp push` overwrites the live script with what's in `dist/` — review
@@ -102,25 +103,72 @@ your diff of `src/Code.ts` before pushing, same as any other deploy.
 
 - Edit `packages/apps-script/src/Code.ts` in this repo.
 - `pnpm typecheck` for a fast local check without building.
-- `pnpm deploy` (build + `clasp push`) to update the live script.
+- `nx deploy @mint-csv-converter/apps-script` (build + `clasp push` +
+  `clasp deploy -i`, see step 8) to update the live script and its
+  deployment.
 - `clasp open` opens the project in the browser editor if you want to
   eyeball it or run something manually (e.g. the first-time authorization
   prompt Apps Script shows when a script requests new permissions —
   `clasp push` alone doesn't trigger that; open the editor and run any
   function once to grant access after adding new scopes/services).
 
-## 8. Managing the Web App deployment from the CLI (optional)
+## 8. Managing the deployment from the CLI
 
-The main README's deployment steps use the Apps Script editor's **Deploy**
-UI. `clasp` can do this too, and makes it easier to update an *existing*
-deployment (keeping its URL stable) rather than accidentally creating a new
-one:
+Push (step 6) updates the code the editor shows and what `clasp run` (see
+below) executes, but it does **not** by itself change what a live
+deployment serves — a deployment pins a specific *version* of the code.
+`clasp` can update an *existing* deployment (keeping its ID stable) rather
+than accidentally creating a new one:
 
 ```bash
 clasp deployments                       # list existing deployments and their IDs
 clasp deploy -i <DEPLOYMENT_ID>          # push a new version to an existing deployment
-clasp deploy                             # create a new deployment (new URL) — avoid unless you mean to
+clasp deploy                             # create a new deployment (new ID) — avoid unless you mean to
 ```
+
+`packages/apps-script/project.json`'s `deploy` Nx target already does
+`clasp push && clasp deploy -i "$CLASP_DEPLOYMENT_ID"` — set
+`CLASP_DEPLOYMENT_ID` (from `clasp deployments`' output) in your shell
+environment once, and `nx deploy @mint-csv-converter/apps-script` handles
+both steps together.
+
+## 9. One-time setup for the sync API
+
+`finalizeAddedRows` (in `src/syncApi.ts`) is called by `packages/automation`
+via the **Apps Script API** (`scripts.run`) under your own Google identity
+— not a Web App, not a shared-secret token. This needs real OAuth2
+credentials, which needs a real (non-default) Google Cloud project. This
+is one-time GCP Console setup, not something `clasp`/this repo can drive:
+
+1. **Switch to a standard GCP project.** Apps Script editor → Project
+   Settings → **Google Cloud Platform (GCP) Project** → switch off the
+   auto-created default project to a real one (create one in
+   [console.cloud.google.com](https://console.cloud.google.com) if you
+   don't have one yet — this is free, no billing account needed for what
+   follows).
+2. **Enable the Apps Script API** for that GCP project: APIs & Services →
+   Library → search "Apps Script API" → Enable. (Free — no billing
+   account needed for this or the Sheets API at personal-project usage
+   scale.)
+3. **Create an OAuth consent screen**: APIs & Services → OAuth consent
+   screen → External → Testing mode (fine for personal use — avoids
+   Google's app-verification process since only you'll ever authorize it)
+   → add your own account as a test user.
+4. **Create an OAuth 2.0 Client ID**, type **Desktop app** (APIs &
+   Services → Credentials → Create Credentials). Download the client
+   secret JSON — this is a credential, keep it local, never commit it
+   (same treatment `.clasp.json` gets).
+5. **Deploy as an API Executable**: Apps Script editor → Deploy → New
+   deployment → type "API Executable" → access "Only myself" → Deploy.
+6. Check Project Settings → "Show `appsscript.json` manifest file" for
+   the auto-populated `oauthScopes` list (Apps Script detects these from
+   what services the code uses) — `packages/automation`'s one-time
+   `authorize` script needs to request this same scope list.
+7. Run `packages/automation`'s `authorize` script once (see that
+   package's README) using the downloaded client secret from step 4 and
+   this script's ID (same as `.clasp.json`'s `scriptId`) — that captures
+   and stores the OAuth token `packages/automation` uses on every sync
+   run afterward.
 
 Prefer `clasp deploy -i <existing deployment id>` for routine updates so
 `packages/automation`'s configured `SHEETS_WEBAPP_URL` doesn't need to

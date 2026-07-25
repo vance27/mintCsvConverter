@@ -74,7 +74,7 @@ export function onDataChange(sheet: Sheet, row: number, col: number, _val: strin
  * on `row`, based on that row's "How to split" value: a checkbox defaulted
  * to checked for "Equally", or an even percentage share for "Variably".
  * Called both from onEdit (a human picking a dropdown value) and from
- * addTransactionsForPeriod in syncApi.ts (a row inserted via the sync API).
+ * finalizeAddedRows in syncApi.ts (rows inserted via the sync API).
  *
  * @param sheet - The sheet containing the row.
  * @param row - The row whose "How to split" value changed.

@@ -5,7 +5,7 @@ import {
   ExportFileToLines,
   type TransactionRow,
 } from '@mint-csv-converter/core';
-import { SheetsClient, loadSheetsClientConfigFromEnv } from './sheetsClient.js';
+import { SheetsClient, defaultSheetsClient } from './sheetsClient.js';
 import { loadSyncState, saveSyncState, defaultSyncStatePath, type SyncState } from './syncState.js';
 import { toIsoDate, getPeriodLabel } from './dateUtils.js';
 
@@ -65,7 +65,7 @@ export function defaultSyncDeps(): SyncDeps {
     factory: new CsvConverterFactory(),
     importFile: (path) => new ImportFileToLines(path).getResults(),
     exportInvalid: (lines, name) => new ExportFileToLines(lines).writeFile(name, 'INVALID'),
-    sheetsClient: new SheetsClient(loadSheetsClientConfigFromEnv()),
+    sheetsClient: defaultSheetsClient(),
     loadSyncState,
     saveSyncState,
   };

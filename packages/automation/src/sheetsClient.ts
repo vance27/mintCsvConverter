@@ -1,7 +1,6 @@
-export interface SheetsClientConfig {
-  webAppUrl: string;
-  token: string;
-}
+import { sheets_v4 } from '@googleapis/sheets';
+import { script_v1 } from '@googleapis/script';
+import { loadSavedCredentialsOrThrow } from './googleAuth.js';
 
 export interface AddTransactionsRequest {
   payerName: string;
@@ -15,53 +14,274 @@ export interface AddTransactionsResult {
   rowsAdded: number;
 }
 
-interface AddTransactionsResponseBody {
-  ok: boolean;
-  result?: AddTransactionsResult;
-  error?: string;
+// Narrowed to just the one call shape SheetsClient actually uses for each
+// method (matching this package's existing Pick<SheetsClient,
+// 'addTransactionsForPeriod'> style in sync.ts) — NOT Pick'd directly from
+// the real API classes, since their methods are heavily overloaded (a
+// streaming variant alongside the plain-Promise one this class uses), and
+// TypeScript requires an assigned function to satisfy every overload, which
+// a simple test fake can't. A real sheets_v4.Sheets/script_v1.Script
+// instance already satisfies these narrower single-signature interfaces
+// (an overloaded method is assignable to a narrower expected shape), and
+// tests can pass a plain fake instead of standing up the full API client.
+export interface SpreadsheetsClient {
+  get(params: {
+    spreadsheetId: string;
+    includeGridData?: boolean;
+  }): Promise<{ data: { sheets?: sheets_v4.Schema$Sheet[] | null } }>;
+  batchUpdate(params: {
+    spreadsheetId: string;
+    requestBody: sheets_v4.Schema$BatchUpdateSpreadsheetRequest;
+  }): Promise<{ data: sheets_v4.Schema$BatchUpdateSpreadsheetResponse }>;
+  values: {
+    get(params: { spreadsheetId: string; range: string }): Promise<{ data: sheets_v4.Schema$ValueRange }>;
+    update(params: {
+      spreadsheetId: string;
+      range: string;
+      valueInputOption: string;
+      requestBody: sheets_v4.Schema$ValueRange;
+    }): Promise<{ data: sheets_v4.Schema$UpdateValuesResponse }>;
+  };
+}
+export interface ScriptClient {
+  scripts: {
+    run(params: {
+      scriptId: string;
+      requestBody: script_v1.Schema$ExecutionRequest;
+    }): Promise<{ data: script_v1.Schema$Operation }>;
+  };
 }
 
-/** Thin client for the Apps Script Web App endpoint in packages/apps-script. */
+export interface SheetsClientConfig {
+  spreadsheetId: string;
+  /** The Apps Script project's script ID (same as .clasp.json's scriptId). */
+  scriptId: string;
+  sheets: { spreadsheets: SpreadsheetsClient };
+  script: ScriptClient;
+}
+
+// Mirrors packages/apps-script/src/sheetLayout.ts's layout constants — kept
+// in sync by hand since these describe the sheet's fixed column layout, not
+// something either side computes from the other.
+const TOTAL_OWING_COLUMN = 4; // column D, 1-indexed
+const MAX_ROWS_TO_SEARCH = 1000;
+const TEMPLATE_SHEET_NAME = 'DUPLICATE ME';
+const FINALIZE_FUNCTION_NAME = 'finalizeAddedRows';
+
+/**
+ * Writes transaction rows into the sheet (via the Sheets API — generic
+ * spreadsheet mechanics, no reason to route through Apps Script) and then
+ * finalizes them (via the Apps Script API's scripts.run, calling
+ * finalizeAddedRows — the checkbox/percent defaulting and settle-up
+ * recalculation only exist there, not reimplemented here).
+ */
 export class SheetsClient {
   constructor(private readonly config: SheetsClientConfig) {}
 
   async addTransactionsForPeriod(request: AddTransactionsRequest): Promise<AddTransactionsResult> {
-    const response = await fetch(this.config.webAppUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        token: this.config.token,
-        payerName: request.payerName,
-        periodLabel: request.periodLabel,
-        rows: request.rows,
-      }),
+    const sheetName = `${request.payerName} ${request.periodLabel}`;
+    const { sheetId, created } = await this.findOrCreateSheet(sheetName);
+
+    if (request.rows.length === 0) {
+      return { sheetName, rowsAdded: 0 };
+    }
+
+    const insertRow = await this.findTotalOwingRow(sheetName);
+    await this.insertRows(sheetId, insertRow, request.rows.length);
+    await this.writeRowValues(sheetName, insertRow, request.rows);
+
+    try {
+      await this.finalizeAddedRows(sheetName, insertRow, request.rows.length);
+    } catch (finalizeError) {
+      await this.rollback(sheetId, created, insertRow, request.rows.length, finalizeError);
+    }
+
+    return { sheetName, rowsAdded: request.rows.length };
+  }
+
+  private async findOrCreateSheet(sheetName: string): Promise<{ sheetId: number; created: boolean }> {
+    const spreadsheet = await this.config.sheets.spreadsheets.get({
+      spreadsheetId: this.config.spreadsheetId,
+      includeGridData: false,
     });
+    const allSheets = spreadsheet.data.sheets ?? [];
 
-    if (!response.ok) {
-      throw new Error(`Sheets endpoint returned HTTP ${response.status}`);
+    const existing = allSheets.find((sheet) => sheet.properties?.title === sheetName);
+    if (existing) {
+      const sheetId = existing.properties?.sheetId;
+      if (sheetId == null) {
+        throw new Error(`Sheet "${sheetName}" has no sheetId in the Sheets API response`);
+      }
+      return { sheetId, created: false };
     }
 
-    // Apps Script Web Apps always respond HTTP 200 regardless of internal
-    // outcome, so the real success/failure signal is the `ok` field here.
-    const body = (await response.json()) as AddTransactionsResponseBody;
-    if (!body.ok) {
-      throw new Error(`Sheets endpoint rejected the request: ${body.error ?? 'unknown error'}`);
+    const template = allSheets.find((sheet) => sheet.properties?.title === TEMPLATE_SHEET_NAME);
+    const templateSheetId = template?.properties?.sheetId;
+    if (templateSheetId == null) {
+      throw new Error(`Template sheet "${TEMPLATE_SHEET_NAME}" not found`);
     }
-    if (!body.result) {
-      throw new Error('Sheets endpoint returned ok:true without a result');
+
+    const duplicateResponse = await this.config.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.config.spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            duplicateSheet: {
+              sourceSheetId: templateSheetId,
+              insertSheetIndex: 1,
+              newSheetName: sheetName,
+            },
+          },
+        ],
+      },
+    });
+    const newSheetId = duplicateResponse.data.replies?.[0]?.duplicateSheet?.properties?.sheetId;
+    if (newSheetId == null) {
+      throw new Error(`Duplicating "${TEMPLATE_SHEET_NAME}" didn't return a new sheetId`);
     }
-    return body.result;
+    return { sheetId: newSheetId, created: true };
+  }
+
+  private async findTotalOwingRow(sheetName: string): Promise<number> {
+    const range = `${quoteSheetName(sheetName)}!${columnLetter(TOTAL_OWING_COLUMN)}2:${columnLetter(TOTAL_OWING_COLUMN)}${1 + MAX_ROWS_TO_SEARCH}`;
+    const response = await this.config.sheets.spreadsheets.values.get({
+      spreadsheetId: this.config.spreadsheetId,
+      range,
+    });
+    const values = response.data.values ?? [];
+    for (let i = 0; i < values.length; i++) {
+      if (values[i][0] === 'TOTAL OWING') {
+        return i + 2;
+      }
+    }
+    throw new Error(`Could not find "TOTAL OWING" row in sheet "${sheetName}"`);
+  }
+
+  private async insertRows(sheetId: number, insertRow: number, rowCount: number): Promise<void> {
+    const startIndex = insertRow - 1;
+    await this.config.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.config.spreadsheetId,
+      requestBody: {
+        requests: [
+          {
+            insertDimension: {
+              range: { sheetId, dimension: 'ROWS', startIndex, endIndex: startIndex + rowCount },
+              // Safe: insertRow is always >= 3 (row 1 is the header, row 2+
+              // is where the first transaction or TOTAL OWING itself would
+              // be), so there's always a preceding row to inherit from.
+              inheritFromBefore: true,
+            },
+          },
+        ],
+      },
+    });
+  }
+
+  private async writeRowValues(sheetName: string, insertRow: number, rows: string[][]): Promise<void> {
+    const lastRow = insertRow + rows.length - 1;
+    const range = `${quoteSheetName(sheetName)}!A${insertRow}:D${lastRow}`;
+    await this.config.sheets.spreadsheets.values.update({
+      spreadsheetId: this.config.spreadsheetId,
+      range,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { range, values: rows },
+    });
+  }
+
+  private async finalizeAddedRows(sheetName: string, insertRow: number, rowCount: number): Promise<void> {
+    const response = await this.config.script.scripts.run({
+      scriptId: this.config.scriptId,
+      requestBody: { function: FINALIZE_FUNCTION_NAME, parameters: [sheetName, insertRow, rowCount] },
+    });
+    if (response.data.error) {
+      const detail = response.data.error.message ?? JSON.stringify(response.data.error.details ?? {});
+      throw new Error(`${FINALIZE_FUNCTION_NAME} failed: ${detail}`);
+    }
+  }
+
+  /**
+   * Best-effort compensating cleanup for when finalizeAddedRows fails after
+   * the Sheets API write already succeeded — there's no real cross-API
+   * transaction available. Never swallows the original failure: rethrows it
+   * on rollback success, or throws a combined error naming both failures.
+   */
+  private async rollback(
+    sheetId: number,
+    sheetWasCreated: boolean,
+    insertRow: number,
+    rowCount: number,
+    finalizeError: unknown,
+  ): Promise<never> {
+    try {
+      if (sheetWasCreated) {
+        await this.config.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: this.config.spreadsheetId,
+          requestBody: { requests: [{ deleteSheet: { sheetId } }] },
+        });
+      } else {
+        const startIndex = insertRow - 1;
+        await this.config.sheets.spreadsheets.batchUpdate({
+          spreadsheetId: this.config.spreadsheetId,
+          requestBody: {
+            requests: [{ deleteDimension: { range: { sheetId, dimension: 'ROWS', startIndex, endIndex: startIndex + rowCount } } } ],
+          },
+        });
+      }
+    } catch (rollbackError) {
+      throw new Error(
+        `finalizeAddedRows failed (${errorMessage(finalizeError)}), and the compensating rollback also failed (${errorMessage(rollbackError)}) — the sheet may be left with un-finalized rows.`,
+        { cause: rollbackError },
+      );
+    }
+    throw finalizeError instanceof Error ? finalizeError : new Error(errorMessage(finalizeError));
   }
 }
 
-export function loadSheetsClientConfigFromEnv(env: NodeJS.ProcessEnv = process.env): SheetsClientConfig {
-  const webAppUrl = env.SHEETS_WEBAPP_URL;
-  const token = env.SHEETS_SYNC_TOKEN;
-  if (!webAppUrl) {
-    throw new Error('Missing SHEETS_WEBAPP_URL environment variable');
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Quotes a sheet name for A1 notation, escaping embedded single quotes. */
+function quoteSheetName(sheetName: string): string {
+  return `'${sheetName.replace(/'/g, "''")}'`;
+}
+
+/** 1-indexed column number -> A1 column letter(s), e.g. 4 -> "D". */
+function columnLetter(column: number): string {
+  let n = column;
+  let letters = '';
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    letters = String.fromCharCode(65 + remainder) + letters;
+    n = Math.floor((n - 1) / 26);
   }
-  if (!token) {
-    throw new Error('Missing SHEETS_SYNC_TOKEN environment variable');
+  return letters;
+}
+
+export function loadSheetsClientConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Omit<SheetsClientConfig, 'sheets' | 'script'> {
+  const spreadsheetId = env.SPREADSHEET_ID;
+  const scriptId = env.APPS_SCRIPT_SCRIPT_ID;
+  const clientSecretPath = env.GOOGLE_OAUTH_CLIENT_SECRET_PATH;
+  if (!spreadsheetId) {
+    throw new Error('Missing SPREADSHEET_ID environment variable');
   }
-  return { webAppUrl, token };
+  if (!scriptId) {
+    throw new Error('Missing APPS_SCRIPT_SCRIPT_ID environment variable');
+  }
+  if (!clientSecretPath) {
+    throw new Error('Missing GOOGLE_OAUTH_CLIENT_SECRET_PATH environment variable');
+  }
+  return { spreadsheetId, scriptId };
+}
+
+export function defaultSheetsClient(env: NodeJS.ProcessEnv = process.env): SheetsClient {
+  const { spreadsheetId, scriptId } = loadSheetsClientConfigFromEnv(env);
+  const clientSecretPath = env.GOOGLE_OAUTH_CLIENT_SECRET_PATH!;
+  const auth = loadSavedCredentialsOrThrow(clientSecretPath);
+  return new SheetsClient({
+    spreadsheetId,
+    scriptId,
+    sheets: new sheets_v4.Sheets({ auth }),
+    script: new script_v1.Script({ auth }),
+  });
 }

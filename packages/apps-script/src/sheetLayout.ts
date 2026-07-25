@@ -166,8 +166,15 @@ export function sumVariableSplitShares(sheet: Sheet, row: number, participantCou
   for (let i = 0; i < participantCount; i++) {
     const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
     const range = sheet.getRange(row, col);
-    const val = range.getValue() as number;
-    total += val;
+    // Percentage share cells hold a string like "50%" (onSplitTypeChanged's
+    // default, and what PERCENT_VALIDATION requires a human to type), not a
+    // bare number — parse it, skipping unparseable/blank cells rather than
+    // letting NaN into the sum (see buildDebtMatrix's matching guard).
+    const val = range.getValue() as string;
+    const share = parseFloat(val);
+    if (!Number.isNaN(share)) {
+      total += share;
+    }
   }
   return total;
 }
