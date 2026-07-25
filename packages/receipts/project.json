@@ -38,6 +38,22 @@
       "options": {
         "command": "node --import tsx packages/receipts/src/scripts/ingest.ts"
       }
+    },
+    "snapshot": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["prisma-generate"],
+      "options": {
+        "command": "node --import tsx packages/receipts/src/scripts/snapshot.ts"
+      }
+    },
+    "restore": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["prisma-generate"],
+      "options": {
+        "command": "node --import tsx packages/receipts/src/scripts/restore.ts"
+      }
     }
   }
 }

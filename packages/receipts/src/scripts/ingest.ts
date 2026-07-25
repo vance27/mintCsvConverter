@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import { getPrisma } from '../db.js';
 import { createOllamaClient } from '../ollamaClient.js';
 import { ingestReceipt } from '../ingest.js';
+import { createSnapshot, writeSnapshotFile, defaultSnapshotPath } from '../snapshot.js';
 
 // Phase 1 driver — no review UI yet. Prints what was extracted so you can
 // eyeball it against the real receipt before any UI/manifest work depends
@@ -12,10 +13,11 @@ import { ingestReceipt } from '../ingest.js';
 // Requires participants to already be seeded (nx run @mint-csv-converter/receipts:seed -- Brian Patrice)
 // and a local Ollama server running with a vision model pulled (see README).
 
-const USAGE = `Usage: ingest.ts [--store <name>] [--payer <name>] <pdf-path...>
+const USAGE = `Usage: ingest.ts [--store <name>] [--payer <name>] [--snapshot] <pdf-path...>
 
-  --store   Store name the receipt is from (default: Costco)
-  --payer   Participant who paid (default: Brian) — must already be seeded`;
+  --store      Store name the receipt is from (default: Costco)
+  --payer      Participant who paid (default: Brian) — must already be seeded
+  --snapshot   After ingesting, write the datastore snapshot (opt-in — see README)`;
 
 async function main(): Promise<void> {
   const { values, positionals } = parseArgs({
@@ -24,6 +26,7 @@ async function main(): Promise<void> {
     options: {
       store: { type: 'string', default: 'Costco' },
       payer: { type: 'string', default: 'Brian' },
+      snapshot: { type: 'boolean', default: false },
     },
   });
 
@@ -59,6 +62,11 @@ async function main(): Promise<void> {
     console.log(`  Reconciled: ${result.reconciled ? 'yes' : 'NO — check this receipt manually'}`);
     console.log(`  New items seen for the first time: ${result.newItemCount}`);
     console.log(`  Aggregate split: ${Object.entries(result.aggregate).map(([name, pct]) => `${name} ${pct}%`).join(', ')}`);
+  }
+
+  if (values.snapshot) {
+    writeSnapshotFile(await createSnapshot(prisma));
+    console.log(`\nWrote snapshot to ${defaultSnapshotPath()}`);
   }
 
   await prisma.$disconnect();

@@ -9,3 +9,5 @@ export { extractReceipt, buildExtractionPrompt, type ExtractReceiptOptions } fro
 export { ingestReceipt, type IngestOptions, type IngestDeps, type IngestResult } from './ingest.js';
 export { seedParticipants } from './seed.js';
 export { retainReceiptSource, defaultReceiptsBaseDir } from './receiptStorage.js';
+export { createSnapshot, writeSnapshotFile, defaultSnapshotPath, type DatastoreSnapshot } from './snapshot.js';
+export { readSnapshotFile, restoreSnapshot, restoreFromFile } from './restore.js';
