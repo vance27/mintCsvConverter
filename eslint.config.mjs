@@ -5,7 +5,14 @@ import globals from 'globals';
 
 export default defineConfig(
   {
-    ignores: ['**/dist/**', '**/coverage/**', '.nx/**', '.github/**', '**/*.tsbuildinfo'],
+    ignores: [
+      '**/dist/**',
+      '**/coverage/**',
+      '.nx/**',
+      '.github/**',
+      '**/*.tsbuildinfo',
+      'packages/receipts/src/generated/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

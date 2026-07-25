@@ -4,5 +4,10 @@
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
-  "types": "./dist/index.d.ts"
+  "types": "./dist/index.d.ts",
+  "dependencies": {
+    "@prisma/adapter-better-sqlite3": "7.9.0",
+    "@prisma/client": "7.9.0",
+    "better-sqlite3": "13.0.1"
+  }
 }

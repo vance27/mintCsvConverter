@@ -1,0 +1,27 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "prisma-generate": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "inputs": ["{projectRoot}/prisma/schema.prisma", "{projectRoot}/prisma.config.ts"],
+      "outputs": ["{projectRoot}/src/generated"],
+      "options": {
+        "cwd": "packages/receipts",
+        "command": "prisma generate"
+      }
+    },
+    "build": {
+      "dependsOn": ["prisma-generate", "^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["prisma-generate", "^build"]
+    },
+    "test": {
+      "dependsOn": ["prisma-generate"]
+    },
+    "lint": {
+      "dependsOn": ["prisma-generate"]
+    }
+  }
+}

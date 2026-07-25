@@ -1,0 +1,129 @@
+// Datastore for the receipt importer (see costco-receipt-importer.md).
+// SQLite via Prisma 7's prisma-client generator. Amounts are Float (SQLite
+// REAL) — the reconcile() tolerance absorbs float noise; item/receipt money
+// is low-stakes for a personal tool. Store/payer/splits are modeled
+// relationally (rows, not columns) so a new store or a third participant is
+// a data change, not a migration.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  runtime             = "nodejs"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Participant {
+  id     Int     @id @default(autoincrement())
+  name   String  @unique
+  active Boolean @default(true)
+
+  splitDefaults ItemSplitDefault[]
+  lineSplits    LineItemSplit[]
+  paidReceipts  Receipt[]
+}
+
+model Store {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  items    Item[]
+  receipts Receipt[]
+}
+
+model Item {
+  id           Int      @id @default(autoincrement())
+  storeId      Int
+  itemCode     String?
+  normalizedName String
+  displayName  String?
+  lastSeenName String
+  createdAt    DateTime @default(now())
+
+  store            Store              @relation(fields: [storeId], references: [id])
+  splitDefaults    ItemSplitDefault[]
+  priceObservations PriceObservation[]
+  lineItems        LineItem[]
+
+  // Item-code match is preferred; normalizedName is the per-store fallback.
+  @@unique([storeId, itemCode])
+  @@unique([storeId, normalizedName])
+}
+
+model ItemSplitDefault {
+  id            Int   @id @default(autoincrement())
+  itemId        Int
+  participantId Int
+  percent       Float
+
+  item        Item        @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@unique([itemId, participantId])
+}
+
+model PriceObservation {
+  id             Int      @id @default(autoincrement())
+  itemId         Int
+  receiptId      Int
+  unitPrice      Float
+  quantity       Float
+  discountAmount Float    @default(0)
+  observedAt     DateTime
+
+  item    Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+}
+
+model Receipt {
+  id           Int      @id @default(autoincrement())
+  storeId      Int
+  payerId      Int
+  sourceSha256 String   @unique
+  sourcePath   String
+  purchaseDate DateTime
+  subtotal     Float
+  tax          Float
+  total        Float
+  status       String   @default("EXTRACTED")
+  reconciled   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  store             Store              @relation(fields: [storeId], references: [id])
+  payer             Participant        @relation(fields: [payerId], references: [id])
+  lineItems         LineItem[]
+  priceObservations PriceObservation[]
+}
+
+model LineItem {
+  id             Int     @id @default(autoincrement())
+  receiptId      Int
+  itemId         Int?
+  rawItemCode    String?
+  rawName        String
+  unitPrice      Float
+  quantity       Float
+  lineTotal      Float
+  discountAmount Float   @default(0)
+  reviewed       Boolean @default(false)
+
+  receipt Receipt         @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  item    Item?           @relation(fields: [itemId], references: [id])
+  splits  LineItemSplit[]
+}
+
+model LineItemSplit {
+  id            Int   @id @default(autoincrement())
+  lineItemId    Int
+  participantId Int
+  percent       Float
+
+  lineItem    LineItem    @relation(fields: [lineItemId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@unique([lineItemId, participantId])
+}

@@ -18,6 +18,18 @@ trustPolicy: no-downgrade # refuse a package version whose trust signals regress
 allowBuilds:
   esbuild: true
   nx: true
+  # Prisma 7 (packages/receipts datastore) + its better-sqlite3 driver
+  # adapter. @prisma/engines' postinstall downloads the platform-specific
+  # schema engine binary from the registry (same download-native-binary
+  # pattern as esbuild); prisma runs setup; better-sqlite3 compiles/downloads
+  # its native SQLite binding. Needed for generate/migrate and the runtime
+  # adapter.
+  "@prisma/engines": true
+  prisma: true
+  better-sqlite3: true
+  # We run `prisma generate` explicitly (the receipts prisma-generate Nx
+  # target), so @prisma/client's auto-generate postinstall is unwanted.
+  "@prisma/client": false
 
 # @nx/js pulls in @babel/core -> semver@6.3.1, which lacks provenance
 # attestation (published 2023-07-10 on the old, backport-only 6.x
