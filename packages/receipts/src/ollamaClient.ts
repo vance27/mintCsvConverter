@@ -12,9 +12,20 @@ export interface VisionChatClient {
   }): Promise<{ message: { content: string } }>;
 }
 
-/** Model used for receipt extraction — swappable via OLLAMA_MODEL. */
+/**
+ * Model used for receipt extraction — swappable via OLLAMA_MODEL.
+ *
+ * Not `llama3.2-vision`: its architecture (`mllama`) was dropped when
+ * Ollama rewrote its inference engine around v0.30.0 and was never
+ * implemented in the newer engine — every current Ollama version fails to
+ * load it (`unknown model architecture: 'mllama'`), confirmed against a
+ * real pull, not just docs. Qwen2.5-VL uses a currently-supported
+ * architecture and is specifically tuned for documents/OCR/structured
+ * visual content, which is a better fit for receipts than the general-
+ * purpose vision models anyway.
+ */
 export function defaultOllamaModel(env: NodeJS.ProcessEnv = process.env): string {
-  return env.OLLAMA_MODEL ?? 'llama3.2-vision';
+  return env.OLLAMA_MODEL ?? 'qwen2.5vl:7b';
 }
 
 /** Builds a real client against a local Ollama server (default http://localhost:11434). */
