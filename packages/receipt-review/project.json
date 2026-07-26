@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "targets": {
+    "serve-api": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build"],
+      "options": {
+        "command": "node --env-file=.env --import tsx --watch packages/receipt-review/src/server/index.ts"
+      }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build"],
+      "options": {
+        "commands": ["nx run @mint-csv-converter/receipt-review:serve-api", "nx run @mint-csv-converter/receipt-review:serve"],
+        "parallel": true
+      }
+    }
+  }
+}

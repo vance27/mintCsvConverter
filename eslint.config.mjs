@@ -73,6 +73,26 @@ export default defineConfig(
     },
   },
   {
+    files: ['packages/receipt-review/src/server/**/*.ts'],
+    extends: [...tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      parserOptions: {
+        project: ['packages/receipt-review/tsconfig.server.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['packages/receipt-review/src/client/**/*.{ts,tsx}'],
+    extends: [...tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      parserOptions: {
+        project: ['packages/receipt-review/tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
     // Test doubles frequently satisfy an async interface (e.g. `fetch`,
     // `SheetsClient.addTransactionsForPeriod`) without needing to await
     // anything themselves — that's not a real missing-await bug. Placed
