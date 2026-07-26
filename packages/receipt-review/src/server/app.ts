@@ -3,12 +3,13 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import {
-  ReceiptStatus,
+  aggregateSplits,
   renderPdfPages,
+  type AggregateLine,
   type PrismaClient,
   type VisionChatClient,
 } from '@mint-csv-converter/receipts';
-import { getReceiptDetail, listReceiptsForReview } from './receiptQueries.js';
+import { getReceiptDetail, listReceipts } from './receiptQueries.js';
 import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from './lineItemReview.js';
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
 import { UploadJobs } from './uploadJobs.js';
@@ -42,9 +43,7 @@ export function createApp(deps: AppDeps) {
     .get('/api/health', (c) => c.json({ ok: true }))
 
     .get('/api/receipts', async (c) => {
-      const statusParam = c.req.query('status');
-      const status = statusParam === ReceiptStatus.SUBMITTED ? ReceiptStatus.SUBMITTED : ReceiptStatus.EXTRACTED;
-      const receipts = await listReceiptsForReview(deps.prisma, status);
+      const receipts = await listReceipts(deps.prisma);
       return c.json(receipts);
     })
 
@@ -150,12 +149,13 @@ export function createApp(deps: AppDeps) {
       if (!detail) {
         throw new HTTPException(404, { message: `Receipt ${id} not found` });
       }
-      const aggregate = Object.fromEntries(
-        [...new Set(detail.lineItems.flatMap((li) => Object.keys(li.splits)))].map((name) => [
-          name,
-          detail.lineItems.reduce((sum, li) => sum + (li.splits[name] ?? 0), 0) / detail.lineItems.length,
-        ]),
-      );
+      const participantNames = [...new Set(detail.lineItems.flatMap((li) => Object.keys(li.splits)))];
+      const aggregateLines: AggregateLine[] = detail.lineItems.map((li) => ({
+        lineTotal: li.lineTotal,
+        discountAmount: li.discountAmount,
+        splits: li.splits,
+      }));
+      const aggregate = aggregateSplits(aggregateLines, participantNames);
       const html = generateAuditHtml({
         receiptId: detail.id,
         store: detail.store,

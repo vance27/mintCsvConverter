@@ -1,4 +1,4 @@
-import { ReceiptStatus, type PrismaClient } from '@mint-csv-converter/receipts';
+import { aggregateSplits, ReceiptStatus, type AggregateLine, type PrismaClient } from '@mint-csv-converter/receipts';
 
 export interface ReceiptSummary {
   id: number;
@@ -9,30 +9,48 @@ export interface ReceiptSummary {
   cardAmount: number | null;
   reconciled: boolean;
   status: ReceiptStatus;
+  submittedAt: string | null;
   lineItemCount: number;
+  /** Current dollar-weighted aggregate split (see aggregateSplits) — the even-split ingest default until reviewed. */
+  aggregate: Record<string, number>;
 }
 
-/** Review queue: unreconciled (low-confidence) receipts float to the top, then oldest first. */
-export async function listReceiptsForReview(
-  prisma: PrismaClient,
-  status: ReceiptStatus = ReceiptStatus.EXTRACTED,
-): Promise<ReceiptSummary[]> {
+/**
+ * All receipts, one list: needs-review ones first (EXTRACTED sorts before
+ * SUBMITTED alphabetically), then unreconciled (low-confidence) ones, then
+ * oldest first.
+ */
+export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary[]> {
   const receipts = await prisma.receipt.findMany({
-    where: { status },
-    orderBy: [{ reconciled: 'asc' }, { purchaseDate: 'asc' }],
-    include: { store: true, payer: true, _count: { select: { lineItems: true } } },
+    orderBy: [{ status: 'asc' }, { reconciled: 'asc' }, { purchaseDate: 'asc' }],
+    include: {
+      store: true,
+      payer: true,
+      _count: { select: { lineItems: true } },
+      lineItems: { include: { splits: { include: { participant: true } } } },
+    },
   });
-  return receipts.map((r) => ({
-    id: r.id,
-    store: r.store.name,
-    payer: r.payer.name,
-    purchaseDate: r.purchaseDate.toISOString(),
-    total: r.total,
-    cardAmount: r.cardAmount,
-    reconciled: r.reconciled,
-    status: r.status,
-    lineItemCount: r._count.lineItems,
-  }));
+  return receipts.map((r) => {
+    const participantNames = [...new Set(r.lineItems.flatMap((li) => li.splits.map((s) => s.participant.name)))];
+    const aggregateLines: AggregateLine[] = r.lineItems.map((li) => ({
+      lineTotal: li.lineTotal,
+      discountAmount: li.discountAmount,
+      splits: Object.fromEntries(li.splits.map((s) => [s.participant.name, s.percent])),
+    }));
+    return {
+      id: r.id,
+      store: r.store.name,
+      payer: r.payer.name,
+      purchaseDate: r.purchaseDate.toISOString(),
+      total: r.total,
+      cardAmount: r.cardAmount,
+      reconciled: r.reconciled,
+      status: r.status,
+      submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
+      lineItemCount: r._count.lineItems,
+      aggregate: aggregateSplits(aggregateLines, participantNames),
+    };
+  });
 }
 
 export interface PriceHistory {
@@ -69,6 +87,7 @@ export interface ReceiptDetail {
   cardAmount: number | null;
   reconciled: boolean;
   status: ReceiptStatus;
+  submittedAt: string | null;
   tenders: { kind: string; label: string; amount: number }[];
   lineItems: LineItemDetail[];
 }
@@ -140,6 +159,7 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
     cardAmount: receipt.cardAmount,
     reconciled: receipt.reconciled,
     status: receipt.status,
+    submittedAt: receipt.submittedAt ? receipt.submittedAt.toISOString() : null,
     tenders: receipt.tenders.map((t) => ({ kind: t.kind, label: t.label, amount: t.amount })),
     lineItems,
   };

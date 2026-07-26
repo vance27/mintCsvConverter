@@ -10,7 +10,7 @@ type View =
   | { name: 'upload' }
   | { name: 'queue' }
   | { name: 'review'; receiptId: number }
-  | { name: 'submitted'; result: SubmitResult };
+  | { name: 'submitted'; result: SubmitResult; wasUpdate: boolean };
 
 export function App() {
   const [view, setView] = useState<View>({ name: 'queue' });
@@ -24,7 +24,7 @@ export function App() {
       <ReceiptReviewPage
         receiptId={view.receiptId}
         onBack={() => setView({ name: 'queue' })}
-        onSubmitted={(result) => setView({ name: 'submitted', result })}
+        onSubmitted={(result, wasUpdate) => setView({ name: 'submitted', result, wasUpdate })}
       />
     );
   }
@@ -34,6 +34,8 @@ export function App() {
       <SubmittedPage
         aggregate={view.result.aggregate}
         auditPath={view.result.auditPath}
+        manifestPath={view.result.manifestPath}
+        wasUpdate={view.wasUpdate}
         onBackToQueue={() => setView({ name: 'queue' })}
       />
     );

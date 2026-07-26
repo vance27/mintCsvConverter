@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createTestDb } from '@mint-csv-converter/receipts/dist/testing/testDb.js';
 import type { PrismaClient } from '@mint-csv-converter/receipts';
-import { getReceiptDetail, listReceiptsForReview } from './receiptQueries.js';
+import { getReceiptDetail, listReceipts } from './receiptQueries.js';
 import { seedBasicReceipt } from './testing/fixtures.js';
 
 describe('receiptQueries', () => {
@@ -17,10 +17,55 @@ describe('receiptQueries', () => {
     const seeded = await seedBasicReceipt(prisma);
     await prisma.receipt.update({ where: { id: seeded.receiptId }, data: { reconciled: false } });
 
-    const results = await listReceiptsForReview(prisma);
+    const results = await listReceipts(prisma);
 
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ id: seeded.receiptId, store: 'Costco', payer: 'Brian', lineItemCount: 2, reconciled: false });
+    // Even before review, the current (even-split default) aggregate is shown in the queue row.
+    expect(results[0].aggregate).toEqual({ Brian: 50, Patrice: 50 });
+  });
+
+  it('weights the queue aggregate by dollar amount, not a naive average across line items', async () => {
+    ({ prisma, cleanup } = createTestDb());
+    const seeded = await seedBasicReceipt(prisma);
+    // A naive per-item average of 60%/50% would be 55%. Making line 1 nine
+    // times line 2's value and asserting the actual weighted result (59%)
+    // proves the big-ticket item dominates, as it should.
+    await prisma.lineItem.update({ where: { id: seeded.lineItemIds[0] }, data: { lineTotal: 90 } });
+    await prisma.lineItemSplit.updateMany({ where: { lineItemId: seeded.lineItemIds[0], participantId: seeded.brianId }, data: { percent: 60 } });
+    await prisma.lineItemSplit.updateMany({ where: { lineItemId: seeded.lineItemIds[0], participantId: seeded.patriceId }, data: { percent: 40 } });
+
+    const results = await listReceipts(prisma);
+
+    expect(results[0].aggregate).toEqual({ Brian: 59, Patrice: 41 });
+  });
+
+  it('lists receipts of every status together, needs-review ones first', async () => {
+    ({ prisma, cleanup } = createTestDb());
+    const seeded = await seedBasicReceipt(prisma);
+    await prisma.receipt.update({ where: { id: seeded.receiptId }, data: { status: 'SUBMITTED' } });
+    // A second, still-unreviewed receipt at the same store — seedBasicReceipt
+    // itself can't be called twice (it always creates a fresh "Costco" store,
+    // which collides on Store.name's unique constraint).
+    const secondReceipt = await prisma.receipt.create({
+      data: {
+        storeId: seeded.storeId,
+        payerId: seeded.brianId,
+        sourceSha256: 'second-receipt',
+        sourcePath: '/tmp/second.pdf',
+        purchaseDate: new Date('2026-07-02'),
+        subtotal: 10,
+        tax: 0,
+        total: 10,
+        cardAmount: 10,
+        reconciled: true,
+      },
+    });
+
+    const results = await listReceipts(prisma);
+
+    expect(results.map((r) => r.id)).toEqual([secondReceipt.id, seeded.receiptId]);
+    expect(results.map((r) => r.status)).toEqual(['EXTRACTED', 'SUBMITTED']);
   });
 
   it('returns full detail with splits, price history, and provenance', async () => {

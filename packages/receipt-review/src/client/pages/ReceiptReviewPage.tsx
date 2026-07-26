@@ -10,7 +10,7 @@ type SubmitResult = InferResponseType<(typeof api.receipts)[':id']['submit']['$p
 interface ReceiptReviewPageProps {
   receiptId: number;
   onBack: () => void;
-  onSubmitted: (result: SubmitResult) => void;
+  onSubmitted: (result: SubmitResult, wasUpdate: boolean) => void;
 }
 
 interface Draft {
@@ -87,6 +87,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
     if (!detail) {
       return;
     }
+    const wasAlreadySubmitted = detail.status === 'SUBMITTED';
     setError(null);
     setSubmitting(true);
     try {
@@ -115,7 +116,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
         return;
       }
       const data = await res.json();
-      onSubmitted(data);
+      onSubmitted(data, wasAlreadySubmitted);
     } finally {
       setSubmitting(false);
     }
@@ -149,9 +150,18 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
           <Stack spacing={2}>
-            <Typography variant="h4">
-              {detail.store} — {detail.purchaseDate.slice(0, 10)}
-            </Typography>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+              <Typography variant="h4">
+                {detail.store} — {detail.purchaseDate.slice(0, 10)}
+              </Typography>
+              {detail.status === 'SUBMITTED' ? (
+                <Chip
+                  size="small"
+                  color="primary"
+                  label={`Submitted ${detail.submittedAt ? detail.submittedAt.slice(0, 10) : ''}`}
+                />
+              ) : null}
+            </Stack>
             <Typography color="text.secondary">
               Paid by {detail.payer}. Total: ${detail.total.toFixed(2)}.
               {detail.reconciled ? '' : ' ⚠ low confidence — check carefully against the PDF.'}
@@ -213,7 +223,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
               Live aggregate: {leftName} {liveAggregate[leftName]}%, {rightName} {liveAggregate[rightName]}%
             </Typography>
             <Button variant="contained" size="large" disabled={submitting} onClick={() => void submit()}>
-              {submitting ? 'Submitting…' : 'Submit receipt'}
+              {submitting ? 'Saving…' : detail.status === 'SUBMITTED' ? 'Update splits' : 'Submit receipt'}
             </Button>
           </Stack>
         </Grid>
