@@ -427,26 +427,56 @@ generated, potentially-numerous personal artifacts, not something that
 belongs in the git-tracked `data/` directory alongside the snapshot. In-place
 annotation of the original stays a later "nice to have."
 
-## Phase 4 — Sync integration (sketch)
+## Phase 4 — Sync integration (done)
 
-In `packages/automation`'s sync path, for **any** `Variably` row (Costco,
-Target, …), look up the manifest by amount (+date proximity) — against
-`cardAmount`, not `total`, so split-tender receipts (partly cash/Costco
-Cash Rewards) still join correctly — and fill the percentage columns
-(`line[4]`/`line[5]`) instead of `'%'`/`'%'`. The manifest carries store +
-payer + per-participant percentages, so it works regardless of who paid
-or which store — not Costco/Brian-specific. Matching key (amount-primary
-vs date) validated against a real export + manifest — Citi's posting date
-can differ from the receipt date by a day or two, so amount is the more
-reliable join. Unmatched variable rows fall back to today's `%`/`%`
-placeholder behavior (never block a sync).
+`packages/automation`'s sync path now matches every synced `'Variably'` row
+(Costco, Target, …) against the receipt manifest and, on a match, fills the
+sheet's percentage columns with the real split instead of the `'%'`/`'%'`
+placeholder — while never blocking a sync when there's no match. This landed
+as three pieces:
 
-The manifest reader/writer types currently live in `packages/receipt-review`
-(see Phase 3), not `packages/receipts` — deliberately, so `packages/automation`
-doesn't gain a dependency that also carries Hono/React as transitive deps just
-to read a JSON file. When this phase is built, either give `automation` its
-own small reader for the manifest's (already-stable) shape, or promote just
-the type definition into `packages/receipts` at that point.
+- **Manifest as a shared workspace package.** `ManifestEntry`/`Manifest`/
+  `readManifest`/`appendManifestEntry` were promoted out of
+  `packages/receipt-review` into a new, dependency-light
+  `packages/receipt-manifest` (Node `fs`/`path` only — no Hono/React, no
+  Prisma/Ollama), rather than either hand-duplicating the shape in
+  `automation` or bolting it onto `packages/receipts` (which would have
+  dragged Prisma/Ollama into `automation`'s dependency graph for no reason).
+  Both `receipt-review` (writer) and `automation` (reader) depend on it via
+  `workspace:*`; Nx's inferred `^build`/typecheck graph handles ordering
+  automatically, same as `core`.
+- **Matching (`packages/automation/src/manifestMatch.ts`).** For each
+  `'Variably'` row, `matchManifestEntry` filters manifest entries to the
+  row's payer, a store name that's a substring of the transaction
+  description (the `VARIABLE` vendor list entries, `'Costco'`/`'TARGET'`,
+  already equal the manifest's store names — not a coincidence), and
+  `cardAmount` within a cent of the transaction amount (not `total`, so
+  split-tender receipts — partly cash/Costco Cash Reward — still join
+  correctly). Multiple same-amount candidates tiebreak on whichever
+  `purchaseDate` is closest to the transaction's date (Citi's posting date
+  can differ from the receipt date by a day or two, so amount stays the
+  primary key). No match (or an empty manifest) returns `null`, and the row
+  keeps today's placeholder behavior — a sync is never blocked on a
+  manifest lookup.
+- **Applying the match — Apps Script, not the Sheets API.** A match's
+  percentages travel as `AddTransactionsRequest.rowPercentages`
+  (participant-name-keyed, e.g. `{ Brian: 62, Patrice: 38 }`, aligned 1:1
+  with `rows`) through `sheetsClient.ts` into the Apps Script API's
+  `finalizeAddedRows` call, **not** written positionally via the Sheets API
+  `values.update` (which stays `A:D`-only, unchanged) — automation doesn't
+  know the sheet's actual participant column order, only Apps Script does.
+  This turned out to be load-bearing, not optional: `finalizeAddedRows`
+  already called `onSplitTypeChanged` unconditionally for every inserted
+  row, which unconditionally resets a `'Variably'` row's participant
+  columns to an even default — so percentages written any other way would
+  have been immediately clobbered. `finalizeAddedRows` now takes a per-row
+  `rowPercentages` array; for a row with a match that covers every
+  participant column exactly, the new `sheetLayout.ts#applyRowPercentages`
+  writes it directly (resolving participant name → column via the existing
+  `getParticipantNames`/`getParticipantIndexByName`); everything else
+  (`null`, or a partial/mismatched participant set) falls back to
+  `onSplitTypeChanged`'s default fill exactly as before. **Redeploying the
+  Apps Script build is required** before a real sync picks this up.
 
 ## Phase 5 — Output sorting (small, independent)
 
