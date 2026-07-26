@@ -155,9 +155,20 @@ backups below) carry only benign item/price/split data.
 - `src/ollamaClient.ts` — thin wrapper over the `ollama` package's
   vision chat, **injectable via an interface** (same testability pattern
   as `SheetsClient`'s `SpreadsheetsClient`/`ScriptClient`), so specs pass
-  a fake and never hit a real model. Model name from env
-  (`OLLAMA_MODEL`, default `qwen2.5vl:7b` — not `llama3.2-vision`, whose
-  architecture Ollama dropped support for around v0.30.0) — swappable.
+  a fake and never hit a real model. Model name from env (`OLLAMA_MODEL`,
+  default `qwen2.5vl:32b`) — swappable. Not `qwen2.5vl:7b`: confirmed
+  against a real receipt that it reliably misattributes a `N @ unitPrice`
+  annotation to the wrong neighboring item (reproducible across repeated
+  attempts, prompt tightening, and a retry loop — see
+  `extractReconciled.ts`); `32b` got the same receipt right twice in a
+  row, at the cost of ~28GB resident memory and ~130-170s/call vs `7b`'s
+  few seconds — `7b` stays available via `OLLAMA_MODEL` override for
+  lower-memory machines or when speed matters more. Not `llama3.2-vision`
+  either: its architecture Ollama dropped support for around v0.30.0; it
+  does still run on a manually-installed pre-rewrite binary and gets
+  receipts right, but only accepts one image per call (breaks multi-page
+  receipts) with inconsistent 53s-5min+ latency, and requires maintaining
+  an unmanaged second Ollama install — not worth it.
 - `src/renderPdf.ts` — receipts are **PDFs**. Render each page to a PNG
   buffer with `pdf-to-img` (pure JS). A Costco receipt is usually one
   page; handle multi-page by rendering all and feeding them together to
@@ -293,7 +304,7 @@ aggregate for eyeballing against the real receipt.
 Ollama isn't a Docker image you have to wire up — it's a small native app
 that runs a local background server on `http://localhost:11434`. On macOS:
 `brew install ollama` (or the download from ollama.com), then `ollama pull
-qwen2.5vl:7b` once to fetch the model weights. After that the `ollama`
+qwen2.5vl:32b` once to fetch the model weights. After that the `ollama`
 npm package in `packages/receipts` just makes HTTP calls to that local
 server — nothing leaves your machine, no cloud account, no per-call cost.
 (A Docker image exists too, but it's not needed on macOS.) Exact steps go

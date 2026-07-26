@@ -17,21 +17,40 @@ UI yet — that's Phase 3).
    ```bash
    brew install ollama
    brew services start ollama   # runs the server via launchd — survives logout/reboot, no terminal tab to keep open
-   ollama pull qwen2.5vl:7b
+   ollama pull qwen2.5vl:32b
    ```
 
    **Not `llama3.2-vision`** — its architecture (`mllama`) was dropped
    when Ollama rewrote its inference engine around v0.30.0 and was never
    implemented in the new one; every current Ollama version fails to load
    it (`unknown model architecture: 'mllama'`, confirmed against a real
-   pull). Qwen2.5-VL uses a currently-supported architecture and is
-   specifically tuned for documents/OCR/structured visual content, which
-   is a better fit for receipts anyway.
+   pull). It does still run on a manually-installed pre-rewrite Ollama
+   binary, and gets receipts right, but isn't worth the trouble: it only
+   accepts one image per call (breaks multi-page receipts), and latency
+   was inconsistent (53s to 5+ minutes) — see `ollamaClient.ts` for the
+   full comparison.
 
-   **This is still a large download — about 6 GB** — so budget time and
-   disk space; it only needs to be pulled once. Everything Ollama
-   downloads lives under `~/.ollama/models/` (`blobs/` for the actual
-   weight files, `manifests/` mapping model names/tags to them).
+   **Why `32b`, not `7b`:** `qwen2.5vl:7b` reliably misattributed a
+   `N @ unitPrice` quantity annotation to the wrong neighboring item on a
+   real receipt — reproducible across repeated attempts, including with
+   prompt tightening and a retry loop. `32b` got the same receipt fully
+   correct twice in a row. The tradeoff is real: `32b` is a ~21GB
+   download, holds ~28GB resident in memory while loaded, and takes
+   ~130-170s per call versus `7b`'s few seconds. If your machine is
+   memory-constrained or you'd rather trade accuracy for speed, pull
+   `qwen2.5vl:7b` too and set `OLLAMA_MODEL=qwen2.5vl:7b` — both can
+   coexist on disk, Ollama only loads whichever one a given call asks for.
+
+   Ollama keeps a model resident in memory for 5 minutes after its last
+   use (`keep_alive`, so back-to-back calls skip the reload cost), then
+   unloads it automatically. To free that memory immediately instead of
+   waiting it out: `ollama stop qwen2.5vl:32b`.
+
+   **This is a large download — about 21 GB for `32b`** (6 GB for `7b`)
+   — so budget time and disk space; it only needs to be pulled once.
+   Everything Ollama downloads lives under `~/.ollama/models/` (`blobs/`
+   for the actual weight files, `manifests/` mapping model names/tags to
+   them).
 
    Ollama runs a local server at `http://localhost:11434` — nothing
    leaves your machine, no cloud account, no per-call cost. `brew
