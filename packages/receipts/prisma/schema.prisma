@@ -89,6 +89,13 @@ model Receipt {
   subtotal     Float
   tax          Float
   total        Float
+  // Portion of `total` actually charged to a card — the amount that will
+  // match a Citi CSV transaction. Differs from `total` when a purchase was
+  // split across tender types (e.g. partly cash or Costco Cash Rewards).
+  // Null only for receipts ingested before this field existed; ingest.ts
+  // always populates it going forward (falling back to `total` when no
+  // tender breakdown was extracted).
+  cardAmount   Float?
   status       String   @default("EXTRACTED")
   reconciled   Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -97,6 +104,21 @@ model Receipt {
   payer             Participant        @relation(fields: [payerId], references: [id])
   lineItems         LineItem[]
   priceObservations PriceObservation[]
+  tenders           ReceiptTender[]
+}
+
+// One row per payment line on the receipt footer (card, cash, Costco Cash
+// Reward, etc.) — never the card/account number itself, only how much was
+// tendered by which method. See extractReceipt.ts's tenderSchema for the
+// "kind" values the extractor is constrained to.
+model ReceiptTender {
+  id        Int    @id @default(autoincrement())
+  receiptId Int
+  kind      String
+  label     String
+  amount    Float
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
 }
 
 model LineItem {

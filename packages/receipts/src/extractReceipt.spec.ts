@@ -64,6 +64,39 @@ describe('extractReceipt', () => {
     const client = fakeClient(JSON.stringify({ items: [] }));
     await expect(extractReceipt(FIXTURE, client)).rejects.toThrow(/failed validation/);
   });
+
+  it('defaults tenders to an empty array when the model omits them', async () => {
+    const client = fakeClient(VALID_RECEIPT_JSON);
+    const receipt = await extractReceipt(FIXTURE, client, { store: 'Costco' });
+    expect(receipt.tenders).toEqual([]);
+  });
+
+  it('parses a split card/cash tender breakdown', async () => {
+    const client = fakeClient(
+      JSON.stringify({
+        ...JSON.parse(VALID_RECEIPT_JSON),
+        tenders: [
+          { kind: 'CARD', label: 'Card', amount: 200.92 },
+          { kind: 'CASH', label: 'Cash', amount: 36.0 },
+        ],
+      }),
+    );
+    const receipt = await extractReceipt(FIXTURE, client, { store: 'Costco' });
+    expect(receipt.tenders).toEqual([
+      { kind: 'CARD', label: 'Card', amount: 200.92 },
+      { kind: 'CASH', label: 'Cash', amount: 36.0 },
+    ]);
+  });
+
+  it('rejects a tender with an unrecognized kind', async () => {
+    const client = fakeClient(
+      JSON.stringify({
+        ...JSON.parse(VALID_RECEIPT_JSON),
+        tenders: [{ kind: 'BITCOIN', label: 'Crypto', amount: 236.92 }],
+      }),
+    );
+    await expect(extractReceipt(FIXTURE, client)).rejects.toThrow(/failed validation/);
+  });
 });
 
 describe('buildExtractionPrompt', () => {

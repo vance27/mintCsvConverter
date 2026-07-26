@@ -46,9 +46,17 @@ export interface ReceiptSnapshotRow {
   subtotal: number;
   tax: number;
   total: number;
+  cardAmount: number | null;
   status: string;
   reconciled: boolean;
   createdAt: string;
+}
+export interface ReceiptTenderSnapshotRow {
+  id: number;
+  receiptId: number;
+  kind: string;
+  label: string;
+  amount: number;
 }
 export interface LineItemSnapshotRow {
   id: number;
@@ -77,6 +85,7 @@ export interface DatastoreSnapshot {
   itemSplitDefaults: ItemSplitDefaultSnapshotRow[];
   priceObservations: PriceObservationSnapshotRow[];
   receipts: ReceiptSnapshotRow[];
+  receiptTenders: ReceiptTenderSnapshotRow[];
   lineItems: LineItemSnapshotRow[];
   lineItemSplits: LineItemSplitSnapshotRow[];
 }
@@ -93,16 +102,18 @@ export function defaultSnapshotPath(): string {
  * safe to commit (to a private repo) as a human-reviewable backup.
  */
 export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSnapshot> {
-  const [participants, stores, items, itemSplitDefaults, priceObservations, receipts, lineItems, lineItemSplits] = await Promise.all([
-    prisma.participant.findMany({ orderBy: { id: 'asc' } }),
-    prisma.store.findMany({ orderBy: { id: 'asc' } }),
-    prisma.item.findMany({ orderBy: { id: 'asc' } }),
-    prisma.itemSplitDefault.findMany({ orderBy: { id: 'asc' } }),
-    prisma.priceObservation.findMany({ orderBy: { id: 'asc' } }),
-    prisma.receipt.findMany({ orderBy: { id: 'asc' } }),
-    prisma.lineItem.findMany({ orderBy: { id: 'asc' } }),
-    prisma.lineItemSplit.findMany({ orderBy: { id: 'asc' } }),
-  ]);
+  const [participants, stores, items, itemSplitDefaults, priceObservations, receipts, receiptTenders, lineItems, lineItemSplits] =
+    await Promise.all([
+      prisma.participant.findMany({ orderBy: { id: 'asc' } }),
+      prisma.store.findMany({ orderBy: { id: 'asc' } }),
+      prisma.item.findMany({ orderBy: { id: 'asc' } }),
+      prisma.itemSplitDefault.findMany({ orderBy: { id: 'asc' } }),
+      prisma.priceObservation.findMany({ orderBy: { id: 'asc' } }),
+      prisma.receipt.findMany({ orderBy: { id: 'asc' } }),
+      prisma.receiptTender.findMany({ orderBy: { id: 'asc' } }),
+      prisma.lineItem.findMany({ orderBy: { id: 'asc' } }),
+      prisma.lineItemSplit.findMany({ orderBy: { id: 'asc' } }),
+    ]);
 
   return {
     version: 1,
@@ -137,10 +148,12 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
       subtotal: r.subtotal,
       tax: r.tax,
       total: r.total,
+      cardAmount: r.cardAmount,
       status: r.status,
       reconciled: r.reconciled,
       createdAt: r.createdAt.toISOString(),
     })),
+    receiptTenders: receiptTenders.map((t) => ({ id: t.id, receiptId: t.receiptId, kind: t.kind, label: t.label, amount: t.amount })),
     lineItems: lineItems.map((l) => ({
       id: l.id,
       receiptId: l.receiptId,

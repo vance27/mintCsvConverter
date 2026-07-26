@@ -48,10 +48,14 @@ async function main(): Promise<void> {
       continue;
     }
 
-    const lineItems = await prisma.lineItem.findMany({
-      where: { receiptId: result.receiptId },
-      include: { item: true, splits: { include: { participant: true } } },
-    });
+    const [lineItems, tenders, receiptRow] = await Promise.all([
+      prisma.lineItem.findMany({
+        where: { receiptId: result.receiptId },
+        include: { item: true, splits: { include: { participant: true } } },
+      }),
+      prisma.receiptTender.findMany({ where: { receiptId: result.receiptId } }),
+      prisma.receipt.findUniqueOrThrow({ where: { id: result.receiptId } }),
+    ]);
 
     for (const lineItem of lineItems) {
       const splits = lineItem.splits.map((s) => `${s.participant.name} ${s.percent}%`).join(', ');
@@ -62,6 +66,14 @@ async function main(): Promise<void> {
     console.log(`  Reconciled: ${result.reconciled ? 'yes' : 'NO — check this receipt manually'}`);
     console.log(`  New items seen for the first time: ${result.newItemCount}`);
     console.log(`  Aggregate split: ${Object.entries(result.aggregate).map(([name, pct]) => `${name} ${pct}%`).join(', ')}`);
+    if (tenders.length > 0) {
+      console.log(`  Tender: ${tenders.map((t) => `${t.kind} $${t.amount.toFixed(2)}`).join(', ')}`);
+    }
+    if (result.cardAmount !== receiptRow.total) {
+      console.log(
+        `  Card-matched amount: $${result.cardAmount.toFixed(2)} (total $${receiptRow.total.toFixed(2)} — partially paid by non-card tender)`,
+      );
+    }
   }
 
   if (values.snapshot) {

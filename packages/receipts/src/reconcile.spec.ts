@@ -13,6 +13,7 @@ function makeReceipt(overrides: Partial<ExtractedReceipt> = {}): ExtractedReceip
       { itemCode: '1', rawName: 'A', quantity: 1, unitPrice: 12.0, lineTotal: 12.0, taxable: false, discountAmount: 0 },
       { itemCode: '2', rawName: 'B', quantity: 1, unitPrice: 8.0, lineTotal: 8.0, taxable: false, discountAmount: 0 },
     ],
+    tenders: [],
     ...overrides,
   };
 }
@@ -56,5 +57,36 @@ describe('reconcile', () => {
   it('allows small rounding differences within tolerance', () => {
     const result = reconcile(makeReceipt({ subtotal: 20.01, total: 21.01 }));
     expect(result.reconciled).toBe(true);
+  });
+
+  it('leaves tenderDelta null and reconciles when no tenders were extracted', () => {
+    const result = reconcile(makeReceipt());
+    expect(result.tenderDelta).toBeNull();
+    expect(result.reconciled).toBe(true);
+  });
+
+  it('reconciles when a single card tender equals total', () => {
+    const result = reconcile(makeReceipt({ tenders: [{ kind: 'CARD', label: 'Card', amount: 21.0 }] }));
+    expect(result.tenderDelta).toBeCloseTo(0);
+    expect(result.reconciled).toBe(true);
+  });
+
+  it('reconciles a purchase split across card and cash tenders', () => {
+    const result = reconcile(
+      makeReceipt({
+        tenders: [
+          { kind: 'CARD', label: 'Card', amount: 15.0 },
+          { kind: 'CASH', label: 'Cash', amount: 6.0 },
+        ],
+      }),
+    );
+    expect(result.tenderDelta).toBeCloseTo(0);
+    expect(result.reconciled).toBe(true);
+  });
+
+  it('flags a receipt whose tenders do not sum to total', () => {
+    const result = reconcile(makeReceipt({ tenders: [{ kind: 'CARD', label: 'Card', amount: 10.0 }] }));
+    expect(result.tenderDelta).toBeCloseTo(-11.0);
+    expect(result.reconciled).toBe(false);
   });
 });

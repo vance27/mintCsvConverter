@@ -105,9 +105,15 @@ migration. Models:
   re-ingesting the same PDF), `sourcePath` (the retained source PDF,
   copied into `~/.config/mint-csv-converter/receipts/<sha>.pdf` on ingest
   so the review UI can show the original alongside the form),
-  `purchaseDate`, `total`, `subtotal`, `tax`, `status` (`EXTRACTED` |
-  `REVIEWED` | `SUBMITTED`), `createdAt`. (The rendered page PNGs from
-  extraction are cached next to it for fast display.)
+  `purchaseDate`, `total`, `subtotal`, `tax`, `cardAmount` (the portion of
+  `total` actually charged to a card — see "Tender breakdown" below),
+  `status` (`EXTRACTED` | `REVIEWED` | `SUBMITTED`), `createdAt`. (The
+  rendered page PNGs from extraction are cached next to it for fast
+  display.)
+- **ReceiptTender** — `id`, `receiptId`, `kind` (`CARD` | `CASH` |
+  `COSTCO_CASH_REWARD` | `OTHER`), `label` (printed method name, never a
+  card/account number), `amount`. One row per payment line on the
+  receipt footer.
 - **LineItem** — `receiptId`, `itemId?` (null until matched), `rawItemCode`,
   `rawName`, `unitPrice`, `quantity`, `lineTotal`, `discountAmount`,
   `reviewed`.
@@ -120,8 +126,11 @@ singleton Prisma client. Store/Participant seed via a small seed script.
 
 **We deliberately do NOT store** the receipt's member number or card
 digits — they aren't needed for splitting and they're the only real PII
-on the receipt. Keeping them out means the datastore (and its backups
-below) carry only benign item/price/split data.
+on the receipt. `ReceiptTender.label` captures the payment *method*
+("Card", "Cash", "Costco Cash Reward") but the extraction prompt
+explicitly instructs the model never to include a card number or any of
+its digits, even masked. Keeping them out means the datastore (and its
+backups below) carry only benign item/price/split data.
 
 ### SQLite vs Postgres, and git-versioned backups
 
@@ -161,31 +170,44 @@ below) carry only benign item/price/split data.
   structured-extraction prompt requesting JSON, and validates the
   response with a **zod** schema (`{ store?, purchaseDate, subtotal, tax,
   total, items: [{ itemCode, rawName, quantity, unitPrice, lineTotal,
-  taxable?, discountAmount }] }`). The prompt **explicitly asks for the
-  numeric item number per line** (the stable key). Grounded in the real
-  sample (CHASKA #1646 receipt): each line is `<taxflag> <itemCode>
-  <abbrev name> <extended price> <Y/N>`; multi-qty items add a separate
-  `N @ unitprice` annotation whose product equals the extended price
-  (e.g. `3 @ 3.99` → BLUEBERRIES `11.97`) — so `lineTotal` = printed
-  price, `quantity`/`unitPrice` come from the `@` annotation (default
-  qty 1). Costco **instant-savings discounts** print as separate negative
-  lines referencing an item code → captured as `discountAmount`. Footer
-  gives SUBTOTAL/TAX/**TOTAL**; TOTAL is the card-transaction match amount
-  (236.92 in the sample). Zod guards against malformed JSON — treat model
-  output as untrusted. Uses Ollama's structured-output (`format`) support
-  to bias toward valid JSON. Prompt is store-aware (Costco tuned for v1; a
-  Target variant slots in later).
+  taxable?, discountAmount }], tenders: [{ kind, label, amount }] }`).
+  The prompt **explicitly asks for the numeric item number per line**
+  (the stable key). Grounded in the real sample (CHASKA #1646 receipt):
+  each line is `<taxflag> <itemCode> <abbrev name> <extended price>
+  <Y/N>`; multi-qty items add a separate `N @ unitprice` annotation whose
+  product equals the extended price (e.g. `3 @ 3.99` → BLUEBERRIES
+  `11.97`) — so `lineTotal` = printed price, `quantity`/`unitPrice` come
+  from the `@` annotation (default qty 1). Costco **instant-savings
+  discounts** print as separate negative lines referencing an item code →
+  captured as `discountAmount`. Footer gives SUBTOTAL/TAX/**TOTAL**
+  (236.92 in the sample), followed by the **tender breakdown** — usually
+  one `kind: "CARD"` line equal to TOTAL, but a purchase split across
+  payment methods (partly cash, partly Costco Cash Reward) prints more
+  than one; `kind` is constrained to `CARD | CASH | COSTCO_CASH_REWARD |
+  OTHER` and `label` is instructed to never carry a card number, even
+  masked. Zod guards against malformed JSON — treat model output as
+  untrusted. Uses Ollama's structured-output (`format`) support to bias
+  toward valid JSON. Prompt is store-aware (Costco tuned for v1; a Target
+  variant slots in later).
 - `src/normalizeItemName.ts` — fallback only, for stores/lines with no
   usable item code: deterministic normalization (uppercase, strip noise,
   collapse whitespace) → per-store `normalizedName` key. Pure,
   unit-tested. Item-code match is preferred whenever a code is present.
 - `src/reconcile.ts` — deterministic arithmetic check on the extraction:
-  Σ(lineTotal − discountAmount) ≈ subtotal, and subtotal + tax ≈ total
-  (small rounding tolerance). Pure, unit-tested. **This is the safety net
+  Σ(lineTotal − discountAmount) ≈ subtotal, subtotal + tax ≈ total, and
+  (when tenders were extracted) Σ tenders ≈ total (small rounding
+  tolerance; the tender check is skipped, not failed, when no tender
+  lines were extracted). Pure, unit-tested. **This is the safety net
   that makes an imperfect VLM acceptable** — we never trust the model for
   math; if a receipt doesn't reconcile, its `Receipt` is flagged
   low-confidence and sorted to the top of review, so a misread digit is
   caught, not silently propagated.
+- `src/tender.ts` — pure helper deriving `cardAmount` (Σ of `CARD`-kind
+  tenders, falling back to the full `total` when no tender breakdown was
+  extracted — the common all-card case). Persisted on `Receipt` at
+  ingest time as the denormalized amount Phase 4 sync will match against
+  the Citi CSV, since `total` itself only matches when the whole receipt
+  was paid by card.
 
 ### Extraction reliability — no model training needed
 
@@ -330,8 +352,11 @@ original at a glance — item, price, price-history hint, editable per-item
 % and display name, live aggregate. On submit: mark receipts
 `REVIEWED`→`SUBMITTED`, update item split defaults, and write a
 **manifest** JSON to `~/.config/mint-csv-converter/receipt-manifest.json`
-keyed by receipt total (primary) with purchase-date proximity as tiebreak
-→ `{ store, payer, percentages }`. Web stack (likely Vite + React + a
+keyed by `cardAmount` (primary — the amount that will actually match the
+Citi CSV, not `total`, since a purchase split across cash/Costco Cash
+Rewards/card only charges the card the remainder) with purchase-date
+proximity as tiebreak → `{ store, payer, percentages }`. Web stack
+(likely Vite + React + a
 small Hono/Express backend reusing `packages/receipts`) decided at this
 phase, not locked now.
 
@@ -350,14 +375,16 @@ to have."
 ## Phase 4 — Sync integration (sketch)
 
 In `packages/automation`'s sync path, for **any** `Variably` row (Costco,
-Target, …), look up the manifest by amount (+date proximity) and fill the
-percentage columns (`line[4]`/`line[5]`) instead of `'%'`/`'%'`. The
-manifest carries store + payer + per-participant percentages, so it works
-regardless of who paid or which store — not Costco/Brian-specific.
-Matching key (amount-primary vs date) validated against a real export +
-manifest — Citi's posting date can differ from the receipt date by a day
-or two, so amount is the more reliable join. Unmatched variable rows fall
-back to today's `%`/`%` placeholder behavior (never block a sync).
+Target, …), look up the manifest by amount (+date proximity) — against
+`cardAmount`, not `total`, so split-tender receipts (partly cash/Costco
+Cash Rewards) still join correctly — and fill the percentage columns
+(`line[4]`/`line[5]`) instead of `'%'`/`'%'`. The manifest carries store +
+payer + per-participant percentages, so it works regardless of who paid
+or which store — not Costco/Brian-specific. Matching key (amount-primary
+vs date) validated against a real export + manifest — Citi's posting date
+can differ from the receipt date by a day or two, so amount is the more
+reliable join. Unmatched variable rows fall back to today's `%`/`%`
+placeholder behavior (never block a sync).
 
 ## Phase 5 — Output sorting (small, independent)
 

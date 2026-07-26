@@ -77,10 +77,14 @@ nx run @mint-csv-converter/receipts:ingest -- --store Costco --payer Brian /path
 
 Prints each extracted line item (with its item code, price, and
 per-participant split), whether the receipt's numbers reconciled
-(subtotal/tax/total arithmetic — a mismatch means the model likely
-misread something and this receipt is worth checking against the PDF
-by hand), how many items were never seen before, and the aggregate
-percentage that would land in the sheet's two "Variably" cells.
+(subtotal/tax/total *and* tender-vs-total arithmetic — a mismatch means
+the model likely misread something and this receipt is worth checking
+against the PDF by hand), how many items were never seen before, and the
+aggregate percentage that would land in the sheet's two "Variably" cells.
+If the purchase was split across payment methods (e.g. partly cash or
+Costco Cash Rewards), it also prints the tender breakdown and the
+card-matched amount — the portion that will actually show up on the
+Citi CSV, since only that part hit the card.
 
 Re-ingesting the same PDF (by content hash) is a no-op. Add `--snapshot`
 to also write the JSON backup (see below) after ingesting.
@@ -132,11 +136,13 @@ is also how a fresh machine bootstraps.
   PDF → page images → VLM structured extraction (zod-validated; model
   output is always treated as untrusted).
 - `src/reconcile.ts` — arithmetic self-check (line sum vs. subtotal vs.
-  total) that flags a receipt as low-confidence without blocking ingest,
-  rather than trusting the model's numbers.
-- `src/normalizeItemName.ts` / `src/aggregate.ts` — pure helpers (item-name
-  fallback key; rolling per-item splits up into the whole-receipt
-  aggregate).
+  total, and tenders vs. total when a breakdown was extracted) that flags
+  a receipt as low-confidence without blocking ingest, rather than
+  trusting the model's numbers.
+- `src/normalizeItemName.ts` / `src/aggregate.ts` / `src/tender.ts` — pure
+  helpers (item-name fallback key; rolling per-item splits up into the
+  whole-receipt aggregate; deriving the card-charged portion of a receipt
+  split across payment methods).
 - `src/ingest.ts` — the pipeline tying the above together against the
   datastore; `src/scripts/ingest.ts` is its CLI entry.
 - `src/snapshot.ts` / `src/restore.ts` — JSON backup/restore.

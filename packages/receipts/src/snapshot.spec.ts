@@ -38,8 +38,15 @@ describe('snapshot + restore round trip', () => {
         subtotal: 21.98,
         tax: 0,
         total: 21.98,
+        cardAmount: 11.98,
         reconciled: true,
       },
+    });
+    await prisma.receiptTender.createMany({
+      data: [
+        { receiptId: receipt.id, kind: 'CARD', label: 'Card', amount: 11.98 },
+        { receiptId: receipt.id, kind: 'CASH', label: 'Cash', amount: 10.0 },
+      ],
     });
     const lineItem = await prisma.lineItem.create({
       data: { receiptId: receipt.id, itemId: item.id, rawItemCode: '1164891', rawName: 'SILK ORG.ALM', unitPrice: 10.99, quantity: 2, lineTotal: 21.98 },
@@ -64,7 +71,11 @@ describe('snapshot + restore round trip', () => {
     expect(snapshot.version).toBe(1);
     expect(snapshot.participants).toHaveLength(2);
     expect(snapshot.items[0]).toMatchObject({ itemCode: '1164891', displayName: 'Silk Almond Milk' });
-    expect(snapshot.receipts[0].purchaseDate).toBe('2026-07-24T00:00:00.000Z');
+    expect(snapshot.receipts[0]).toMatchObject({ purchaseDate: '2026-07-24T00:00:00.000Z', cardAmount: 11.98 });
+    expect(snapshot.receiptTenders.map((t) => ({ receiptId: t.receiptId, kind: t.kind, label: t.label, amount: t.amount }))).toEqual([
+      { receiptId: snapshot.receipts[0].id, kind: 'CARD', label: 'Card', amount: 11.98 },
+      { receiptId: snapshot.receipts[0].id, kind: 'CASH', label: 'Cash', amount: 10.0 },
+    ]);
 
     const { prisma: targetDb, cleanup } = createTestDb();
     cleanups.push(cleanup);
@@ -92,7 +103,7 @@ describe('snapshot + restore round trip', () => {
     const dir = mkdtempSync(join(tmpdir(), 'snapshot-test-'));
     cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
     const path = join(dir, 'bad.json');
-    writeSnapshotFile({ version: 99 as 1, participants: [], stores: [], items: [], itemSplitDefaults: [], priceObservations: [], receipts: [], lineItems: [], lineItemSplits: [] }, path);
+    writeSnapshotFile({ version: 99 as 1, participants: [], stores: [], items: [], itemSplitDefaults: [], priceObservations: [], receipts: [], receiptTenders: [], lineItems: [], lineItemSplits: [] }, path);
 
     expect(() => readSnapshotFile(path)).toThrow(/Unsupported snapshot version/);
   });
@@ -101,7 +112,7 @@ describe('snapshot + restore round trip', () => {
     const { prisma } = await seedSampleData();
     await expect(prisma.participant.count()).resolves.toBe(2);
 
-    await restoreSnapshot(prisma, { version: 1, participants: [], stores: [], items: [], itemSplitDefaults: [], priceObservations: [], receipts: [], lineItems: [], lineItemSplits: [] });
+    await restoreSnapshot(prisma, { version: 1, participants: [], stores: [], items: [], itemSplitDefaults: [], priceObservations: [], receipts: [], receiptTenders: [], lineItems: [], lineItemSplits: [] });
 
     await expect(prisma.participant.count()).resolves.toBe(0);
     await expect(prisma.receipt.count()).resolves.toBe(0);

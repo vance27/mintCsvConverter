@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { extractReceipt } from './extractReceipt.js';
 import type { VisionChatClient } from './ollamaClient.js';
 import { reconcile } from './reconcile.js';
+import { cardAmount } from './tender.js';
 import { normalizeItemName } from './normalizeItemName.js';
 import { aggregateSplits, evenPercentages, type AggregateLine } from './aggregate.js';
 import { retainReceiptSource } from './receiptStorage.js';
@@ -31,6 +32,8 @@ export interface IngestResult {
   newItemCount: number;
   /** Per-participant aggregate percentage for the whole receipt — the pair that lands in the sheet. */
   aggregate: Record<string, number>;
+  /** Portion of the receipt total charged to a card — the amount that will match a Citi CSV transaction (see tender.ts). */
+  cardAmount: number;
 }
 
 /**
@@ -48,7 +51,14 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
 
   const existing = await prisma.receipt.findUnique({ where: { sourceSha256 } });
   if (existing) {
-    return { receiptId: existing.id, skipped: true, reconciled: existing.reconciled, newItemCount: 0, aggregate: {} };
+    return {
+      receiptId: existing.id,
+      skipped: true,
+      reconciled: existing.reconciled,
+      newItemCount: 0,
+      aggregate: {},
+      cardAmount: existing.cardAmount ?? existing.total,
+    };
   }
 
   const extracted = await extractReceipt(pdfPath, client, { store: options.store, model: options.model });
@@ -80,6 +90,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
 
   const sourcePath = retainReceiptSource(pdfPath, sourceSha256, deps.receiptsBaseDir);
   const purchaseDate = new Date(extracted.purchaseDate);
+  const cardAmountValue = cardAmount(extracted.tenders, extracted.total);
 
   const receipt = await prisma.$transaction(async (tx) => {
     const created = await tx.receipt.create({
@@ -92,10 +103,22 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
         subtotal: extracted.subtotal,
         tax: extracted.tax,
         total: extracted.total,
+        cardAmount: cardAmountValue,
         status: 'EXTRACTED',
         reconciled: reconcileResult.reconciled,
       },
     });
+
+    if (extracted.tenders.length > 0) {
+      await tx.receiptTender.createMany({
+        data: extracted.tenders.map((tender) => ({
+          receiptId: created.id,
+          kind: tender.kind,
+          label: tender.label,
+          amount: tender.amount,
+        })),
+      });
+    }
 
     for (const { item, extractedItem, splitPercents } of resolved) {
       const lineItem = await tx.lineItem.create({
@@ -141,7 +164,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
     activeParticipants.map((p) => p.name),
   );
 
-  return { receiptId: receipt.id, skipped: false, reconciled: reconcileResult.reconciled, newItemCount, aggregate };
+  return { receiptId: receipt.id, skipped: false, reconciled: reconcileResult.reconciled, newItemCount, aggregate, cardAmount: cardAmountValue };
 }
 
 async function resolveItem(

@@ -13,6 +13,17 @@ export interface ExtractedLineItem {
   discountAmount: number;
 }
 
+/** How a tender line was paid — constrains what the extractor may emit; see extractReceipt.ts's tenderSchema. */
+export type TenderKind = 'CARD' | 'CASH' | 'COSTCO_CASH_REWARD' | 'OTHER';
+
+/** One payment line from the receipt footer (never a card/account number, only method + amount). */
+export interface ExtractedTender {
+  kind: TenderKind;
+  /** Printed method name/label, with any card or account digits redacted. */
+  label: string;
+  amount: number;
+}
+
 /** A whole receipt as extracted from its PDF (pre-persistence). */
 export interface ExtractedReceipt {
   store: string | null;
@@ -22,4 +33,6 @@ export interface ExtractedReceipt {
   tax: number;
   total: number;
   items: ExtractedLineItem[];
+  /** Payment breakdown from the footer — usually one CARD line equal to total; more than one means a split payment (e.g. partly cash). */
+  tenders: ExtractedTender[];
 }

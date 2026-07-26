@@ -24,6 +24,7 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
     await tx.priceObservation.deleteMany();
     await tx.lineItem.deleteMany();
     await tx.itemSplitDefault.deleteMany();
+    await tx.receiptTender.deleteMany();
     await tx.receipt.deleteMany();
     await tx.item.deleteMany();
     await tx.store.deleteMany();
@@ -42,6 +43,9 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
       await tx.receipt.createMany({
         data: snapshot.receipts.map((r) => ({ ...r, purchaseDate: new Date(r.purchaseDate), createdAt: new Date(r.createdAt) })),
       });
+    }
+    if (snapshot.receiptTenders.length > 0) {
+      await tx.receiptTender.createMany({ data: snapshot.receiptTenders });
     }
     if (snapshot.lineItems.length > 0) {
       await tx.lineItem.createMany({ data: snapshot.lineItems });

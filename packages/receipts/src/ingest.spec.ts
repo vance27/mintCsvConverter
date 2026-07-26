@@ -59,6 +59,7 @@ describe('ingestReceipt', () => {
     expect(result.newItemCount).toBe(1);
     expect(result.reconciled).toBe(true);
     expect(result.aggregate).toEqual({ Brian: 50, Patrice: 50 });
+    expect(result.cardAmount).toBe(21.98);
 
     const lineItem = await prisma.lineItem.findFirstOrThrow({ where: { receiptId: result.receiptId }, include: { splits: true } });
     expect(lineItem.splits).toHaveLength(2);
@@ -117,6 +118,29 @@ describe('ingestReceipt', () => {
     expect(result.skipped).toBe(false);
     expect(result.reconciled).toBe(false);
     await expect(prisma.receipt.count()).resolves.toBe(1);
+  });
+
+  it('persists a tender breakdown and uses only the card portion for cardAmount when a purchase is split across tender types', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const pdfPath = writeFixturePdf(workDir, 'r6.pdf');
+    const splitTenderJson = {
+      ...RECEIPT_JSON,
+      tenders: [
+        { kind: 'CARD', label: 'Card', amount: 11.98 },
+        { kind: 'CASH', label: 'Cash', amount: 10.0 },
+      ],
+    };
+    const deps: IngestDeps = { prisma, client: fakeClient(splitTenderJson), receiptsBaseDir: join(workDir, 'store') };
+
+    const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+    expect(result.cardAmount).toBeCloseTo(11.98);
+    const tenders = await prisma.receiptTender.findMany({ where: { receiptId: result.receiptId } });
+    expect(tenders.map((t) => ({ kind: t.kind, amount: t.amount }))).toEqual([
+      { kind: 'CARD', amount: 11.98 },
+      { kind: 'CASH', amount: 10.0 },
+    ]);
   });
 
   it('throws a clear error when the payer is not a seeded participant', async () => {
