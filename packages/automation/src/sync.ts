@@ -5,9 +5,11 @@ import {
   ExportFileToLines,
   type TransactionRow,
 } from '@mint-csv-converter/core';
+import { readManifest, defaultManifestPath, type Manifest } from '@mint-csv-converter/receipt-manifest';
 import { SheetsClient, defaultSheetsClient } from './sheetsClient.js';
 import { loadSyncState, saveSyncState, defaultSyncStatePath, type SyncState } from './syncState.js';
 import { toIsoDate, getPeriodLabel } from './dateUtils.js';
+import { matchManifestEntry } from './manifestMatch.js';
 
 export const USAGE = `Usage: sync.ts --input <path/to/export.csv> [name]
 
@@ -58,6 +60,7 @@ export interface SyncDeps {
   sheetsClient: Pick<SheetsClient, 'addTransactionsForPeriod'>;
   loadSyncState: (path: string) => SyncState;
   saveSyncState: (path: string, state: SyncState) => void;
+  readManifest: () => Manifest;
 }
 
 export function defaultSyncDeps(): SyncDeps {
@@ -68,6 +71,7 @@ export function defaultSyncDeps(): SyncDeps {
     sheetsClient: defaultSheetsClient(),
     loadSyncState,
     saveSyncState,
+    readManifest: () => readManifest(defaultManifestPath()),
   };
 }
 
@@ -99,6 +103,7 @@ export async function runSync(options: SyncOptions, deps: SyncDeps): Promise<Syn
   const skippedAsAlreadySynced = dataRows.length - newRows.length;
 
   const groups = groupRowsByPeriod(newRows);
+  const manifestEntries = deps.readManifest().entries;
 
   const periodsSynced: SyncSummary['periodsSynced'] = [];
   const allInvalidLines: TransactionRow[] = [];
@@ -111,10 +116,14 @@ export async function runSync(options: SyncOptions, deps: SyncDeps): Promise<Syn
     allInvalidLines.push(...invalidLines);
 
     if (result.length > 0) {
+      const rowPercentages = result.map((row) =>
+        row[3] === 'Variably' ? matchManifestEntry(row, options.name, manifestEntries) : null,
+      );
       const addResult = await deps.sheetsClient.addTransactionsForPeriod({
         payerName: options.name,
         periodLabel,
         rows: result.map((row) => row.slice(0, 4)),
+        rowPercentages,
       });
       periodsSynced.push({ payerName: options.name, periodLabel, rowsAdded: addResult.rowsAdded });
     }

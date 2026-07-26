@@ -83,7 +83,28 @@ describe('SheetsClient.addTransactionsForPeriod', () => {
     );
     expect(fakeScript.scripts.run).toHaveBeenCalledWith({
       scriptId: SCRIPT_ID,
-      requestBody: { function: 'finalizeAddedRows', parameters: ['Brian 07/26', 4, 1] },
+      requestBody: { function: 'finalizeAddedRows', parameters: ['Brian 07/26', 4, 1, null] },
+    });
+  });
+
+  it('forwards rowPercentages to finalizeAddedRows', async () => {
+    const fakeSheets = makeFakeSheets({ sheets: [{ title: 'Brian 07/26', sheetId: 5 }], totalOwingRow: 4 });
+    const fakeScript = makeFakeScript();
+    const client = new SheetsClient({ spreadsheetId: SPREADSHEET_ID, scriptId: SCRIPT_ID, sheets: { spreadsheets: fakeSheets }, script: fakeScript });
+
+    await client.addTransactionsForPeriod({
+      payerName: 'Brian',
+      periodLabel: '07/26',
+      rows: [['Costco Wholesale 07/01/2026', 'Brian', '150.00', 'Variably']],
+      rowPercentages: [{ Brian: 62, Patrice: 38 }],
+    });
+
+    expect(fakeScript.scripts.run).toHaveBeenCalledWith({
+      scriptId: SCRIPT_ID,
+      requestBody: {
+        function: 'finalizeAddedRows',
+        parameters: ['Brian 07/26', 4, 1, [{ Brian: 62, Patrice: 38 }]],
+      },
     });
   });
 

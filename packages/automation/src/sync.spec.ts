@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CsvConverterFactory, type TransactionRow } from '@mint-csv-converter/core';
+import type { Manifest } from '@mint-csv-converter/receipt-manifest';
 import type { AddTransactionsRequest } from './sheetsClient.js';
 import { runSync, parseSyncArgs, type SyncDeps } from './sync.js';
 
@@ -13,6 +14,7 @@ function makeDeps(overrides: Partial<SyncDeps> = {}): SyncDeps {
     },
     loadSyncState: vi.fn(() => ({})),
     saveSyncState: vi.fn(),
+    readManifest: vi.fn((): Manifest => ({ version: 1, entries: [] })),
     ...overrides,
   };
 }
@@ -109,6 +111,67 @@ describe('runSync', () => {
 
     const requestArg = addTransactionsForPeriod.mock.calls[0][0] as { rows: string[][] };
     expect(requestArg.rows).toEqual([['Costco Wholesale 06/20/2026', 'Brian', '150.00', 'Variably']]);
+  });
+
+  it('leaves rowPercentages null for a Variably row with no manifest match', async () => {
+    const addTransactionsForPeriod = vi.fn(async (_request: AddTransactionsRequest) => ({ sheetName: 'x', rowsAdded: 1 }));
+    const deps = makeDeps({
+      importFile: () => [
+        ['Date', 'Description', '', 'Amount'],
+        ['06/20/2026', 'Costco Wholesale', '', '150.00'],
+      ],
+      sheetsClient: { addTransactionsForPeriod },
+    });
+
+    await runSync({ inputFile: 'x.csv', name: 'Brian', syncStateFile: 'state.json' }, deps);
+
+    const requestArg = addTransactionsForPeriod.mock.calls[0][0] as { rowPercentages: unknown[] };
+    expect(requestArg.rowPercentages).toEqual([null]);
+  });
+
+  it('fills rowPercentages for a Variably row matching a manifest entry', async () => {
+    const addTransactionsForPeriod = vi.fn(async (_request: AddTransactionsRequest) => ({ sheetName: 'x', rowsAdded: 1 }));
+    const deps = makeDeps({
+      importFile: () => [
+        ['Date', 'Description', '', 'Amount'],
+        ['06/20/2026', 'Costco Wholesale', '', '150.00'],
+      ],
+      sheetsClient: { addTransactionsForPeriod },
+      readManifest: (): Manifest => ({
+        version: 1,
+        entries: [
+          {
+            receiptId: 1,
+            store: 'Costco',
+            payer: 'Brian',
+            cardAmount: 150.0,
+            purchaseDate: '2026-06-20',
+            percentages: { Brian: 62, Patrice: 38 },
+          },
+        ],
+      }),
+    });
+
+    await runSync({ inputFile: 'x.csv', name: 'Brian', syncStateFile: 'state.json' }, deps);
+
+    const requestArg = addTransactionsForPeriod.mock.calls[0][0] as { rowPercentages: unknown[] };
+    expect(requestArg.rowPercentages).toEqual([{ Brian: 62, Patrice: 38 }]);
+  });
+
+  it('never sets rowPercentages for an Equally-split row', async () => {
+    const addTransactionsForPeriod = vi.fn(async (_request: AddTransactionsRequest) => ({ sheetName: 'x', rowsAdded: 1 }));
+    const deps = makeDeps({
+      importFile: () => [
+        ['Date', 'Description', '', 'Amount'],
+        ['06/20/2026', 'Chipotle', '', '25.00'],
+      ],
+      sheetsClient: { addTransactionsForPeriod },
+    });
+
+    await runSync({ inputFile: 'x.csv', name: 'Brian', syncStateFile: 'state.json' }, deps);
+
+    const requestArg = addTransactionsForPeriod.mock.calls[0][0] as { rowPercentages: unknown[] };
+    expect(requestArg.rowPercentages).toEqual([null]);
   });
 });
 

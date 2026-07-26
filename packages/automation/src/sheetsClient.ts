@@ -7,6 +7,15 @@ export interface AddTransactionsRequest {
   periodLabel: string;
   /** Each row is [description, payerName, amount, splitType] — columns A-D only. */
   rows: string[][];
+  /**
+   * Per-row manifest-matched percentages, aligned 1:1 with `rows` — a
+   * participant-name-keyed split (e.g. `{ Brian: 62, Patrice: 38 }`) for a
+   * 'Variably' row with a receipt-manifest match, or null otherwise.
+   * Applied by the Apps Script side (which knows the sheet's actual
+   * participant column layout) instead of written positionally here, so
+   * this stays a name-keyed map rather than raw column values.
+   */
+  rowPercentages?: (Record<string, number> | null)[];
 }
 
 export interface AddTransactionsResult {
@@ -91,7 +100,7 @@ export class SheetsClient {
     await this.writeRowValues(sheetName, insertRow, request.rows);
 
     try {
-      await this.finalizeAddedRows(sheetName, insertRow, request.rows.length);
+      await this.finalizeAddedRows(sheetName, insertRow, request.rows.length, request.rowPercentages);
     } catch (finalizeError) {
       await this.rollback(sheetId, created, insertRow, request.rows.length, finalizeError);
     }
@@ -188,10 +197,18 @@ export class SheetsClient {
     });
   }
 
-  private async finalizeAddedRows(sheetName: string, insertRow: number, rowCount: number): Promise<void> {
+  private async finalizeAddedRows(
+    sheetName: string,
+    insertRow: number,
+    rowCount: number,
+    rowPercentages?: (Record<string, number> | null)[],
+  ): Promise<void> {
     const response = await this.config.script.scripts.run({
       scriptId: this.config.scriptId,
-      requestBody: { function: FINALIZE_FUNCTION_NAME, parameters: [sheetName, insertRow, rowCount] },
+      requestBody: {
+        function: FINALIZE_FUNCTION_NAME,
+        parameters: [sheetName, insertRow, rowCount, rowPercentages ?? null],
+      },
     });
     if (response.data.error) {
       const detail = response.data.error.message ?? JSON.stringify(response.data.error.details ?? {});
