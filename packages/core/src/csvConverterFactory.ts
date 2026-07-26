@@ -70,7 +70,10 @@ export class CsvConverterFactory {
 
   personalExclusions: Record<string, string[]> = CsvConverterFactory.defaultPersonalExclusions;
   splitRulesDict: Record<string, string[]> = CsvConverterFactory.defaultSplitRulesDict;
-  sorted = false;
+  // Groups same-vendor purchases together (sort key is "<description> <date>",
+  // so it sorts by description first) instead of the raw reverse-input order.
+  // Set to false to restore the old unsorted behavior.
+  sorted = true;
 
   convert(lines: TransactionRow[], outputFormat: string, name: string): ConvertResult {
     const converter = this.getConverter(outputFormat);

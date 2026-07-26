@@ -91,7 +91,18 @@ describe('convertToExpenseSplitting', () => {
     ];
   });
 
-  it('splits and tags valid lines correctly', () => {
+  it('splits and tags valid lines correctly, sorted by description (the default)', () => {
+    const [result] = factory.convertToExpenseSplitting(lines, 'Brian');
+
+    expect(result).toEqual([
+      ['APPLE.COM/BILL 866-712-7753 CA 06/23/2024', 'Brian', '2.99', 'Equally', 'TRUE', 'TRUE'],
+      ['Chipotle Mexican Grill 06/20/2024', 'Brian', '25.00', 'Equally', 'TRUE', 'TRUE'],
+      ['Costco Wholesale 06/21/2024', 'Brian', '150.00', 'Variably', '%', '%'],
+    ]);
+  });
+
+  it('preserves reverse-input order when sorted is turned off', () => {
+    factory.sorted = false;
     const [result] = factory.convertToExpenseSplitting(lines, 'Brian');
 
     expect(result).toEqual([

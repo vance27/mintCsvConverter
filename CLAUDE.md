@@ -54,6 +54,7 @@ Three-stage pipeline wired together in [packages/core/src/main.ts](packages/core
    - Iterates rows in reverse, and for each row checks `isValidLine` against `personalExclusions[<PAYER_NAME>]` (case-insensitive substring match against `line[1]`, the description). Matching lines are personal spending and are routed to `invalidLines`; everything else is kept.
    - For kept lines, checks `isVariableSplit` against `splitRulesDict.VARIABLE` to decide whether the row is tagged `"Variably"` (split `%`/`%`) or `"Equally"` (split `TRUE`/`TRUE`). `splitRulesDict.SHARED` is documentation of known joint bills (e.g. mortgage, insurance) that also land in the `"Equally"` bucket — it isn't branched on separately in code since that's already the default for any non-excluded, non-variable transaction.
    - Returns a `[result, invalidLines]` tuple. Output columns are: `date + description`, payer name, amount (`line[3]`), split type, and two split-ratio columns.
+   - `sorted` (default `true`) sorts `result` by that first column (`"<description> <date>"`, so effectively by description) before returning, grouping same-vendor purchases together instead of leaving them in raw reverse-input order — set an instance's `sorted = false` to restore the old unsorted behavior.
 3. **Export** — `ExportFileToLines` ([packages/core/src/exportFileToLines.ts](packages/core/src/exportFileToLines.ts)) writes both `result` and `invalidLines` out as separate CSV files, named `<name>_<timestamp>_<VALID|INVALID>_csvConverter.csv`, into the current working directory.
 
 ### Adding a new payer

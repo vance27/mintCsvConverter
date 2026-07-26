@@ -478,15 +478,19 @@ as three pieces:
   `onSplitTypeChanged`'s default fill exactly as before. **Redeploying the
   Apps Script build is required** before a real sync picks this up.
 
-## Phase 5 — Output sorting (small, independent)
+## Phase 5 — Output sorting (done)
 
-`CsvConverterFactory` already has a `sorted` flag and a working sort
-(`csvConverterFactory.ts:112`), just defaulted off and never wired up.
-Wire it on (surface via a CLI/sync flag or default-on) so similar
-purchases group together — the sort key is `line[0]` (`description +
-date`), which groups same-vendor purchases alphanumerically. Confirm the
-key sorts the way you want on a real export; adjust to sort by description
-alone if the trailing date fragments the grouping.
+`CsvConverterFactory`'s `sorted` instance flag now defaults to `true`
+(was `false`, never wired up) — no new CLI/sync flag, matching this
+being a small/independent phase and the repo's no-premature-flags
+convention. Both the standalone CLI (`main.ts`) and `packages/automation`'s
+sync path pick it up automatically since both just `new CsvConverterFactory()`.
+The existing sort key (`line[0]`, `"<description> <date>"`) groups
+same-vendor purchases together as intended — description sorts first,
+date is only a same-description tiebreak, so the trailing-date concern
+this phase was originally scoped to double-check didn't need any changes.
+Set an instance's `sorted = false` to restore the old unsorted
+(reverse-input-order) behavior.
 
 ---
 
