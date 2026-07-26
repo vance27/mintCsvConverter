@@ -63,7 +63,8 @@ async function main(): Promise<void> {
       console.log(`  ${lineItem.rawName}${codeLabel}: $${lineItem.lineTotal.toFixed(2)} — ${splits}`);
     }
 
-    console.log(`  Reconciled: ${result.reconciled ? 'yes' : 'NO — check this receipt manually'}`);
+    const attemptsNote = result.attempts > 1 ? ` (took ${result.attempts} extraction attempts)` : '';
+    console.log(`  Reconciled: ${result.reconciled ? 'yes' : 'NO — check this receipt manually'}${attemptsNote}`);
     console.log(`  New items seen for the first time: ${result.newItemCount}`);
     console.log(`  Aggregate split: ${Object.entries(result.aggregate).map(([name, pct]) => `${name} ${pct}%`).join(', ')}`);
     if (tenders.length > 0) {

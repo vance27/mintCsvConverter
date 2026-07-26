@@ -208,6 +208,20 @@ backups below) carry only benign item/price/split data.
   ingest time as the denormalized amount Phase 4 sync will match against
   the Citi CSV, since `total` itself only matches when the whole receipt
   was paid by card.
+- `src/extractReconciled.ts` — wraps `extractReceipt` + `reconcile` in a
+  bounded retry loop (`MAX_EXTRACTION_ATTEMPTS = 3`): re-extracts from
+  scratch whenever a result fails to reconcile, since the VLM isn't
+  perfectly deterministic and a second read sometimes gets a
+  misattributed quantity annotation right where the first didn't. Never
+  blocks — if no attempt reconciles, the last attempt is kept anyway,
+  still flagged low-confidence. `ingest.ts` calls this instead of
+  `extractReceipt` directly; `IngestResult.attempts` surfaces how many it
+  took (1 = reconciled first try) so the CLI can report it. Not a
+  guaranteed fix: confirmed against a real receipt that a misread can
+  come back byte-identical on a fresh call when the model has a
+  systematic bias for that specific layout, not just random noise — this
+  raises the fraction needing zero manual review, it doesn't eliminate
+  the need for Phase 3's review UI.
 
 ### Extraction reliability — no model training needed
 

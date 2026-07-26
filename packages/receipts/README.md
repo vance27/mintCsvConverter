@@ -75,11 +75,17 @@ UI yet — that's Phase 3).
 nx run @mint-csv-converter/receipts:ingest -- --store Costco --payer Brian /path/to/receipt.pdf
 ```
 
+If extraction doesn't reconcile (subtotal/tax/total *or* tender-vs-total
+arithmetic doesn't add up), it's automatically retried from scratch up to
+3 times before giving up — the model isn't perfectly deterministic, so a
+second read sometimes gets a misread quantity right where the first
+didn't. This isn't a guaranteed fix (a systematic misread can come back
+identical on retry), so it's still worth checking a receipt against the
+PDF by hand when it prints as unreconciled.
+
 Prints each extracted line item (with its item code, price, and
-per-participant split), whether the receipt's numbers reconciled
-(subtotal/tax/total *and* tender-vs-total arithmetic — a mismatch means
-the model likely misread something and this receipt is worth checking
-against the PDF by hand), how many items were never seen before, and the
+per-participant split), whether the receipt's numbers reconciled and how
+many attempts that took, how many items were never seen before, and the
 aggregate percentage that would land in the sheet's two "Variably" cells.
 If the purchase was split across payment methods (e.g. partly cash or
 Costco Cash Rewards), it also prints the tender breakdown and the
@@ -139,6 +145,9 @@ is also how a fresh machine bootstraps.
   total, and tenders vs. total when a breakdown was extracted) that flags
   a receipt as low-confidence without blocking ingest, rather than
   trusting the model's numbers.
+- `src/extractReconciled.ts` — retries extraction (up to 3 attempts) until
+  it reconciles, falling back to the last attempt (still flagged) if none
+  do. `ingest.ts` uses this instead of calling `extractReceipt` directly.
 - `src/normalizeItemName.ts` / `src/aggregate.ts` / `src/tender.ts` — pure
   helpers (item-name fallback key; rolling per-item splits up into the
   whole-receipt aggregate; deriving the card-charged portion of a receipt

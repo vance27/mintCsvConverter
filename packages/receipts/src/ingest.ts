@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { extractReceipt } from './extractReceipt.js';
+import { extractReconciledReceipt } from './extractReconciled.js';
 import type { VisionChatClient } from './ollamaClient.js';
-import { reconcile } from './reconcile.js';
 import { cardAmount } from './tender.js';
 import { normalizeItemName } from './normalizeItemName.js';
 import { aggregateSplits, evenPercentages, type AggregateLine } from './aggregate.js';
@@ -34,6 +33,8 @@ export interface IngestResult {
   aggregate: Record<string, number>;
   /** Portion of the receipt total charged to a card — the amount that will match a Citi CSV transaction (see tender.ts). */
   cardAmount: number;
+  /** How many extraction attempts it took to reconcile (0 when skipped, 1 when it reconciled on the first try) — see extractReconciled.ts. */
+  attempts: number;
 }
 
 /**
@@ -58,11 +59,15 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
       newItemCount: 0,
       aggregate: {},
       cardAmount: existing.cardAmount ?? existing.total,
+      attempts: 0,
     };
   }
 
-  const extracted = await extractReceipt(pdfPath, client, { store: options.store, model: options.model });
-  const reconcileResult = reconcile(extracted);
+  const {
+    receipt: extracted,
+    reconcile: reconcileResult,
+    attempts,
+  } = await extractReconciledReceipt(pdfPath, client, { store: options.store, model: options.model });
 
   const store = await findOrCreateStore(prisma, options.store);
   const payer = await findParticipantOrThrow(prisma, options.payer);
@@ -164,7 +169,15 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
     activeParticipants.map((p) => p.name),
   );
 
-  return { receiptId: receipt.id, skipped: false, reconciled: reconcileResult.reconciled, newItemCount, aggregate, cardAmount: cardAmountValue };
+  return {
+    receiptId: receipt.id,
+    skipped: false,
+    reconciled: reconcileResult.reconciled,
+    newItemCount,
+    aggregate,
+    cardAmount: cardAmountValue,
+    attempts,
+  };
 }
 
 async function resolveItem(
