@@ -1,5 +1,19 @@
 import { useEffect, useState } from 'react';
 import type { InferResponseType } from 'hono/client';
+import {
+  Button,
+  Chip,
+  Container,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material';
 import { api } from '../lib/api.js';
 
 type ReceiptSummary = InferResponseType<typeof api.receipts.$get>[number];
@@ -20,39 +34,55 @@ export function ReviewQueuePage({ onUpload, onSelect }: ReviewQueuePageProps) {
   }, []);
 
   return (
-    <main>
-      <h1>Receipts needing review</h1>
-      <button onClick={onUpload}>Upload more</button>
-      {receipts === null ? (
-        <p>Loading…</p>
-      ) : receipts.length === 0 ? (
-        <p>Nothing to review — upload a receipt to get started.</p>
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Store</th>
-              <th>Payer</th>
-              <th>Date</th>
-              <th>Total</th>
-              <th>Items</th>
-              <th>Confidence</th>
-            </tr>
-          </thead>
-          <tbody>
-            {receipts.map((receipt) => (
-              <tr key={receipt.id} onClick={() => onSelect(receipt.id)} style={{ cursor: 'pointer' }}>
-                <td>{receipt.store}</td>
-                <td>{receipt.payer}</td>
-                <td>{receipt.purchaseDate.slice(0, 10)}</td>
-                <td>${receipt.total.toFixed(2)}</td>
-                <td>{receipt.lineItemCount}</td>
-                <td>{receipt.reconciled ? 'ok' : 'needs a closer look'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </main>
+    <Container maxWidth="md" sx={{ py: 6 }}>
+      <Stack spacing={3}>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h4">Receipts needing review</Typography>
+          <Button variant="contained" onClick={onUpload}>
+            Upload more
+          </Button>
+        </Stack>
+        {receipts === null ? (
+          <Typography color="text.secondary">Loading…</Typography>
+        ) : receipts.length === 0 ? (
+          <Paper sx={{ p: 4 }}>
+            <Typography color="text.secondary">Nothing to review — upload a receipt to get started.</Typography>
+          </Paper>
+        ) : (
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Store</TableCell>
+                  <TableCell>Payer</TableCell>
+                  <TableCell>Date</TableCell>
+                  <TableCell align="right">Total</TableCell>
+                  <TableCell align="right">Items</TableCell>
+                  <TableCell>Confidence</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {receipts.map((receipt) => (
+                  <TableRow key={receipt.id} hover onClick={() => onSelect(receipt.id)} sx={{ cursor: 'pointer' }}>
+                    <TableCell>{receipt.store}</TableCell>
+                    <TableCell>{receipt.payer}</TableCell>
+                    <TableCell>{receipt.purchaseDate.slice(0, 10)}</TableCell>
+                    <TableCell align="right">${receipt.total.toFixed(2)}</TableCell>
+                    <TableCell align="right">{receipt.lineItemCount}</TableCell>
+                    <TableCell>
+                      {receipt.reconciled ? (
+                        <Chip label="ok" color="success" size="small" variant="outlined" />
+                      ) : (
+                        <Chip label="needs a closer look" color="warning" size="small" variant="outlined" />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Stack>
+    </Container>
   );
 }

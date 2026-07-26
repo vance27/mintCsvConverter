@@ -1,4 +1,18 @@
 import { useState } from 'react';
+import {
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Container,
+  List,
+  ListItem,
+  ListItemText,
+  Paper,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { api } from '../lib/api.js';
 
 interface FileProgress {
@@ -16,6 +30,16 @@ const POLL_INTERVAL_MS = 2000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function StatusChip({ status }: { status: FileProgress['status'] }) {
+  if (status === 'done') {
+    return <Chip label="Done" color="success" size="small" />;
+  }
+  if (status === 'error') {
+    return <Chip label="Error" color="error" size="small" />;
+  }
+  return <Chip icon={<CircularProgress size={14} />} label={status === 'uploading' ? 'Uploading' : 'Extracting'} size="small" />;
 }
 
 export function UploadPage({ onDone }: UploadPageProps) {
@@ -62,37 +86,51 @@ export function UploadPage({ onDone }: UploadPageProps) {
   const allDone = files.length > 0 && files.every((f) => f.status === 'done' || f.status === 'error');
 
   return (
-    <main>
-      <h1>Upload receipts</h1>
-      <label>
-        Store
-        <input value={store} onChange={(e) => setStore(e.target.value)} disabled={submitting} />
-      </label>
-      <label>
-        Payer
-        <input value={payer} onChange={(e) => setPayer(e.target.value)} disabled={submitting} />
-      </label>
-      <input
-        type="file"
-        accept="application/pdf"
-        multiple
-        disabled={submitting}
-        onChange={(e) => {
-          const selected = Array.from(e.target.files ?? []);
-          if (selected.length > 0) {
-            void handleSubmit(selected);
-          }
-        }}
-      />
-      <ul>
-        {files.map((f, i) => (
-          <li key={i}>
-            {f.file.name}: {f.status}
-            {f.message ? ` — ${f.message}` : ''}
-          </li>
-        ))}
-      </ul>
-      {allDone ? <button onClick={onDone}>Go to review queue</button> : null}
-    </main>
+    <Container maxWidth="sm" sx={{ py: 6 }}>
+      <Paper sx={{ p: 4 }}>
+        <Stack spacing={3}>
+          <Typography variant="h4">Upload receipts</Typography>
+          <Stack direction="row" spacing={2}>
+            <TextField label="Store" value={store} onChange={(e) => setStore(e.target.value)} disabled={submitting} fullWidth />
+            <TextField label="Payer" value={payer} onChange={(e) => setPayer(e.target.value)} disabled={submitting} fullWidth />
+          </Stack>
+          <Button component="label" variant="contained" disabled={submitting}>
+            Choose PDFs
+            <input
+              type="file"
+              accept="application/pdf"
+              multiple
+              hidden
+              onChange={(e) => {
+                const selected = Array.from(e.target.files ?? []);
+                if (selected.length > 0) {
+                  void handleSubmit(selected);
+                }
+              }}
+            />
+          </Button>
+          {files.length > 0 ? (
+            <List>
+              {files.map((f, i) => (
+                <ListItem
+                  key={i}
+                  secondaryAction={<StatusChip status={f.status} />}
+                  sx={{ bgcolor: 'background.default', borderRadius: 1, mb: 1 }}
+                >
+                  <ListItemText primary={f.file.name} secondary={f.message} />
+                </ListItem>
+              ))}
+            </List>
+          ) : null}
+          {allDone ? (
+            <Box>
+              <Button variant="outlined" onClick={onDone}>
+                Go to review queue
+              </Button>
+            </Box>
+          ) : null}
+        </Stack>
+      </Paper>
+    </Container>
   );
 }

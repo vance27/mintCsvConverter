@@ -1,3 +1,5 @@
+import { Box, Button, Container, Paper, Stack, Typography } from '@mui/material';
+
 interface SubmittedPageProps {
   aggregate: Record<string, number>;
   auditPath: string;
@@ -6,13 +8,27 @@ interface SubmittedPageProps {
 
 export function SubmittedPage({ aggregate, auditPath, onBackToQueue }: SubmittedPageProps) {
   return (
-    <main>
-      <h1>Receipt submitted</h1>
-      <p>Aggregate split: {Object.entries(aggregate).map(([name, pct]) => `${name} ${pct}%`).join(', ')}</p>
-      <p>
-        Audit copy written to <code>{auditPath}</code>.
-      </p>
-      <button onClick={onBackToQueue}>Back to queue</button>
-    </main>
+    <Container maxWidth="sm" sx={{ py: 8 }}>
+      <Paper sx={{ p: 4 }}>
+        <Stack spacing={2}>
+          <Typography variant="h4">Receipt submitted</Typography>
+          <Typography>
+            Aggregate split: {Object.entries(aggregate).map(([name, pct]) => `${name} ${pct}%`).join(', ')}
+          </Typography>
+          <Typography color="text.secondary">
+            Audit copy written to{' '}
+            <Box component="code" sx={{ bgcolor: 'background.default', px: 0.5, borderRadius: 0.5 }}>
+              {auditPath}
+            </Box>
+            .
+          </Typography>
+          <Box>
+            <Button variant="contained" onClick={onBackToQueue}>
+              Back to queue
+            </Button>
+          </Box>
+        </Stack>
+      </Paper>
+    </Container>
   );
 }
