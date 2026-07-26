@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { zValidator } from '@hono/zod-validator';
 import {
   ReceiptStatus,
   renderPdfPages,
@@ -56,14 +57,11 @@ export function createApp(deps: AppDeps) {
       return c.json(detail);
     })
 
-    .patch('/api/receipts/:id/line-items/:lineItemId', async (c) => {
+    .patch('/api/receipts/:id/line-items/:lineItemId', zValidator('json', updateLineItemSplitsSchema), async (c) => {
       const lineItemId = parseIntParam(c.req.param('lineItemId'));
-      const body = updateLineItemSplitsSchema.safeParse(await c.req.json());
-      if (!body.success) {
-        throw new HTTPException(400, { message: body.error.message });
-      }
+      const body = c.req.valid('json');
       try {
-        await updateLineItemSplits(deps.prisma, lineItemId, body.data);
+        await updateLineItemSplits(deps.prisma, lineItemId, body);
       } catch (error) {
         if (error instanceof SplitsSumError) {
           throw new HTTPException(400, { message: error.message });

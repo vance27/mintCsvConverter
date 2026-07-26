@@ -128,6 +128,9 @@ importers:
       '@hono/node-server':
         specifier: 2.0.11
         version: 2.0.11(hono@4.12.32)
+      '@hono/zod-validator':
+        specifier: 0.9.0
+        version: 0.9.0(hono@4.12.32)(zod@4.4.3)
       '@mint-csv-converter/receipts':
         specifier: workspace:*
         version: link:../receipts
@@ -954,6 +957,12 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
+
+  '@hono/zod-validator@0.9.0':
+    resolution: {integrity: sha512-n0ZSXmCiHVIp4Y5wlOOyZCeTd/rsawA/qW1cipB8QOYKZ9N8Tk0nZUZCXho9cu374AN4JpDNKioNKBJ/W+LBug==}
+    peerDependencies:
+      hono: '>=4.11.2'
+      zod: ^3.25.0 || ^4.0.0
 
   '@humanfs/core@0.19.2':
     resolution: {integrity: sha512-UhXNm+CFMWcbChXywFwkmhqjs3PRCmcSa/hfBgLIb7oQ5HNb1wS0icWsGtSAUNgefHeI+eBrA8I1fxmbHsGdvA==}
@@ -4627,6 +4636,11 @@ snapshots:
   '@hono/node-server@2.0.11(hono@4.12.32)':
     dependencies:
       hono: 4.12.32
+
+  '@hono/zod-validator@0.9.0(hono@4.12.32)(zod@4.4.3)':
+    dependencies:
+      hono: 4.12.32
+      zod: 4.4.3
 
   '@humanfs/core@0.19.2':
     dependencies:
