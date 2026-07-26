@@ -132,6 +132,31 @@ describe('ingestReceipt', () => {
     await expect(prisma.receipt.count()).resolves.toBe(1);
   });
 
+  it('reuses an existing item by normalizedName when a fresh itemCode read misses, instead of colliding on create', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const store = await prisma.store.create({ data: { name: 'Costco' } });
+    const existingItem = await prisma.item.create({
+      data: { storeId: store.id, itemCode: '1857160', normalizedName: 'KS BEEF STKS', lastSeenName: 'KS BEEF STKS' },
+    });
+
+    // Same name (same normalizedName), but a one-digit-off itemCode — reproduces
+    // a real OCR misread that previously threw a P2002 on Item.create().
+    const misreadCodeJson = {
+      ...RECEIPT_JSON,
+      items: [{ itemCode: '1857168', rawName: 'KS BEEF STKS', quantity: 1, unitPrice: 13.79, lineTotal: 13.79, taxable: true, discountAmount: 0 }],
+    };
+    const pdfPath = writeFixturePdf(workDir, 'r7.pdf');
+    const deps: IngestDeps = { prisma, client: fakeClient(misreadCodeJson), receiptsBaseDir: join(workDir, 'store') };
+
+    const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+    expect(result.newItemCount).toBe(0);
+    await expect(prisma.item.count()).resolves.toBe(1);
+    const lineItem = await prisma.lineItem.findFirstOrThrow({ where: { receiptId: result.receiptId } });
+    expect(lineItem.itemId).toBe(existingItem.id);
+  });
+
   it('retries extraction after an unreconciled attempt and persists the reconciled retry', async () => {
     const { prisma, workDir } = setup();
     await seedParticipants(prisma, ['Brian', 'Patrice']);

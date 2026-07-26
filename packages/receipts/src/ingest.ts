@@ -188,9 +188,15 @@ async function resolveItem(
 ): Promise<{ item: Item; isNew: boolean; splitPercents: number[] }> {
   const normalizedName = normalizeItemName(extractedItem.rawName);
 
-  const item = extractedItem.itemCode
-    ? await prisma.item.findUnique({ where: { storeId_itemCode: { storeId, itemCode: extractedItem.itemCode } } })
-    : await prisma.item.findUnique({ where: { storeId_normalizedName: { storeId, normalizedName } } });
+  // itemCode is the preferred key, but a misread digit (confirmed against a
+  // real receipt: one-off OCR error on an item code) means an itemCode miss
+  // doesn't necessarily mean the item is new — fall back to normalizedName
+  // before creating, so a fresh Item.create() doesn't collide with a
+  // different pre-existing item that happens to share that name.
+  const item =
+    (extractedItem.itemCode
+      ? await prisma.item.findUnique({ where: { storeId_itemCode: { storeId, itemCode: extractedItem.itemCode } } })
+      : null) ?? (await prisma.item.findUnique({ where: { storeId_normalizedName: { storeId, normalizedName } } }));
 
   if (item) {
     const defaults = await prisma.itemSplitDefault.findMany({ where: { itemId: item.id } });
