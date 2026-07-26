@@ -115,6 +115,38 @@ export function getParticipantIndexByName(participantNames: string[]): Record<st
 }
 
 /**
+ * Writes real percentages (from a synced receipt-manifest match) into a
+ * row's participant columns, instead of onSplitTypeChanged's even default.
+ * Only writes anything when `percentages` covers exactly the sheet's real
+ * participant set — a stray/missing name means the caller should fall back
+ * to the default fill instead of partially writing a row.
+ *
+ * @param sheet - The sheet containing the row.
+ * @param row - The row to write into.
+ * @param percentages - Participant name -> percent share, e.g. `{ Brian: 62, Patrice: 38 }`.
+ * @returns Whether `percentages` covered every participant column and was written.
+ */
+export function applyRowPercentages(sheet: Sheet, row: number, percentages: Record<string, number>): boolean {
+  const participantNames = getParticipantNames(sheet);
+  const indexByName = getParticipantIndexByName(participantNames);
+  const percentageNames = Object.keys(percentages);
+
+  const coversAllParticipants =
+    percentageNames.length === participantNames.length && percentageNames.every((name) => name in indexByName);
+  if (!coversAllParticipants) {
+    return false;
+  }
+
+  for (const name of percentageNames) {
+    const col = PARTICIPANT_COLUMN_OFFSET + indexByName[name] + 1;
+    const range = sheet.getRange(row, col);
+    range.setValue(`${percentages[name]}%`);
+    range.setDataValidation(PERCENT_VALIDATION);
+  }
+  return true;
+}
+
+/**
  * @param sheet - The sheet containing the row.
  * @param row - The row to check.
  * @returns Whether `row`'s "How to split" value is "Equally".

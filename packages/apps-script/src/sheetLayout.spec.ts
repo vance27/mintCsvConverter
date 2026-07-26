@@ -4,6 +4,7 @@ import {
   getParticipantCount,
   getParticipantNames,
   getParticipantIndexByName,
+  applyRowPercentages,
   isEquallySplitRow,
   isVariablySplitRow,
   countEquallySplitParticipants,
@@ -29,6 +30,38 @@ describe('getParticipantNames', () => {
 describe('getParticipantIndexByName', () => {
   it('maps each name to its column position', () => {
     expect(getParticipantIndexByName(['Brian', 'Patrice'])).toEqual({ Brian: 0, Patrice: 1 });
+  });
+});
+
+describe('applyRowPercentages', () => {
+  it('writes a percent string into each named participant column', () => {
+    const sheet = new FakeSheet([
+      ['Description', 'Who Paid', 'Amount', 'How to split', 'Brian', 'Patrice'],
+      ['Costco', 'Brian', 150, 'Variably'],
+    ]);
+    const wrote = applyRowPercentages(sheet.asSheet(), 2, { Brian: 62, Patrice: 38 });
+    expect(wrote).toBe(true);
+    expect(sheet.grid[1]).toEqual(['Costco', 'Brian', 150, 'Variably', '62%', '38%']);
+  });
+
+  it('returns false and writes nothing when a percentage name is not a real participant', () => {
+    const sheet = new FakeSheet([
+      ['Description', 'Who Paid', 'Amount', 'How to split', 'Brian', 'Patrice'],
+      ['Costco', 'Brian', 150, 'Variably'],
+    ]);
+    const wrote = applyRowPercentages(sheet.asSheet(), 2, { Brian: 62, Someone: 38 });
+    expect(wrote).toBe(false);
+    expect(sheet.grid[1]).toEqual(['Costco', 'Brian', 150, 'Variably']);
+  });
+
+  it('returns false and writes nothing when percentages omits a participant', () => {
+    const sheet = new FakeSheet([
+      ['Description', 'Who Paid', 'Amount', 'How to split', 'Brian', 'Patrice'],
+      ['Costco', 'Brian', 150, 'Variably'],
+    ]);
+    const wrote = applyRowPercentages(sheet.asSheet(), 2, { Brian: 100 });
+    expect(wrote).toBe(false);
+    expect(sheet.grid[1]).toEqual(['Costco', 'Brian', 150, 'Variably']);
   });
 });
 

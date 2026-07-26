@@ -53,6 +53,49 @@ describe('finalizeAddedRows', () => {
     setActiveSpreadsheetForTest(undefined);
   });
 
+  it('writes manifest-matched percentages instead of the even default, and still defaults unmatched rows', () => {
+    resetScriptPropertiesForTest();
+    const spreadsheet = new FakeSpreadsheet();
+    const sheet = spreadsheet.addSheet('Brian 07/26', [
+      ['Description', 'Who Paid', 'Amount', 'How to split', 'Brian', 'Patrice'],
+      ['Costco 07/01/2026', 'Brian', 150, 'Variably'],
+      ['Target 07/02/2026', 'Brian', 40, 'Variably'],
+      ['', '', '', 'TOTAL OWING'],
+      ['', '', '', true],
+    ]);
+    setActiveSpreadsheetForTest(spreadsheet);
+
+    finalizeAddedRows('Brian 07/26', 2, 2, [{ Brian: 62, Patrice: 38 }, null]);
+
+    // Row 2: real manifest match, written directly (not the even default).
+    expect(sheet.grid[1][4]).toBe('62%');
+    expect(sheet.grid[1][5]).toBe('38%');
+    // Row 3: no match (null) -> falls back to onSplitTypeChanged's default.
+    expect(sheet.grid[2][4]).toBe('50%');
+    expect(sheet.grid[2][5]).toBe('50%');
+
+    setActiveSpreadsheetForTest(undefined);
+  });
+
+  it('falls back to the even default when a percentages entry has an unknown participant', () => {
+    resetScriptPropertiesForTest();
+    const spreadsheet = new FakeSpreadsheet();
+    const sheet = spreadsheet.addSheet('Brian 07/26', [
+      ['Description', 'Who Paid', 'Amount', 'How to split', 'Brian', 'Patrice'],
+      ['Costco 07/01/2026', 'Brian', 150, 'Variably'],
+      ['', '', '', 'TOTAL OWING'],
+      ['', '', '', true],
+    ]);
+    setActiveSpreadsheetForTest(spreadsheet);
+
+    finalizeAddedRows('Brian 07/26', 2, 1, [{ Brian: 62, Someone: 38 }]);
+
+    expect(sheet.grid[1][4]).toBe('50%');
+    expect(sheet.grid[1][5]).toBe('50%');
+
+    setActiveSpreadsheetForTest(undefined);
+  });
+
   it('throws when no sheet with that name exists', () => {
     resetScriptPropertiesForTest();
     const spreadsheet = new FakeSpreadsheet();

@@ -1,4 +1,5 @@
 import { onSplitTypeChanged } from './triggers.js';
+import { applyRowPercentages } from './sheetLayout.js';
 import { recalculateSettleUp } from './settleUp.js';
 
 // ---------------------------------------------------------------------
@@ -23,9 +24,21 @@ import { recalculateSettleUp } from './settleUp.js';
  * @param sheetName - The target tab's name, e.g. "Brian 07/26".
  * @param startRow - The first inserted row's 1-indexed row number.
  * @param rowCount - How many contiguous rows starting at startRow to finalize.
+ * @param rowPercentages - Per-row receipt-manifest-matched percentages,
+ *   aligned 1:1 with the rowCount rows starting at startRow (see
+ *   AddTransactionsRequest.rowPercentages in packages/automation's
+ *   sheetsClient.ts). For a row with a real match, its percentages are
+ *   written directly instead of onSplitTypeChanged's even default; null
+ *   entries (or omitting this parameter) keep today's default-fill
+ *   behavior.
  * @throws If no sheet named `sheetName` exists.
  */
-export function finalizeAddedRows(sheetName: string, startRow: number, rowCount: number): void {
+export function finalizeAddedRows(
+  sheetName: string,
+  startRow: number,
+  rowCount: number,
+  rowPercentages?: (Record<string, number> | null)[] | null,
+): void {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) {
@@ -33,7 +46,10 @@ export function finalizeAddedRows(sheetName: string, startRow: number, rowCount:
   }
 
   for (let i = 0; i < rowCount; i++) {
-    onSplitTypeChanged(sheet, startRow + i);
+    const percentages = rowPercentages?.[i];
+    if (!percentages || !applyRowPercentages(sheet, startRow + i, percentages)) {
+      onSplitTypeChanged(sheet, startRow + i);
+    }
   }
 
   recalculateSettleUp(sheet);
