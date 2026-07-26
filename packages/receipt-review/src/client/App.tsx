@@ -1,20 +1,31 @@
 import { useState } from 'react';
 import { UploadPage } from './pages/UploadPage.js';
+import { ReviewQueuePage } from './pages/ReviewQueuePage.js';
+import { ReceiptReviewPage } from './pages/ReceiptReviewPage.js';
+
+type View = { name: 'upload' } | { name: 'queue' } | { name: 'review'; receiptId: number };
 
 export function App() {
-  const [uploadsDone, setUploadsDone] = useState(false);
+  const [view, setView] = useState<View>({ name: 'queue' });
 
-  if (uploadsDone) {
-    // The review queue page lands in the next commit — this is a
-    // placeholder handoff point so the upload flow is testable end-to-end
-    // on its own first.
+  if (view.name === 'upload') {
+    return <UploadPage onDone={() => setView({ name: 'queue' })} />;
+  }
+
+  if (view.name === 'review') {
     return (
-      <main>
-        <h1>Uploads complete</h1>
-        <p>Review queue coming soon.</p>
-      </main>
+      <ReceiptReviewPage
+        receiptId={view.receiptId}
+        onBack={() => setView({ name: 'queue' })}
+        onSubmitted={() => setView({ name: 'queue' })}
+      />
     );
   }
 
-  return <UploadPage onDone={() => setUploadsDone(true)} />;
+  return (
+    <ReviewQueuePage
+      onUpload={() => setView({ name: 'upload' })}
+      onSelect={(receiptId) => setView({ name: 'review', receiptId })}
+    />
+  );
 }

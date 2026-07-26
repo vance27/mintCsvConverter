@@ -68,7 +68,11 @@ export function createApp(deps: AppDeps) {
         }
         throw error;
       }
-      const detail = await getReceiptDetail(deps.prisma, (await deps.prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } })).receiptId);
+      const receiptId = (await deps.prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } })).receiptId;
+      const detail = await getReceiptDetail(deps.prisma, receiptId);
+      if (!detail) {
+        throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
+      }
       return c.json(detail);
     })
 
@@ -170,6 +174,16 @@ export function createApp(deps: AppDeps) {
       writeAuditHtml(id, html, deps.submitOptions?.auditDir ?? defaultAuditDir());
       return c.html(html);
     });
+
+  // HTTPException defaults to a plain-text body; zValidator's own failure
+  // path already returns JSON (see @hono/zod-validator), so this just makes
+  // HTTPException match — every error response is JSON, uniformly.
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) {
+      return c.json({ message: err.message }, err.status);
+    }
+    throw err;
+  });
 
   return app;
 }
