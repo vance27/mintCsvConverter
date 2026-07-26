@@ -367,23 +367,50 @@ correction should always win. Every split is still retained as history
 overriding the latest value. Items whose split legitimately varies
 trip-to-trip are just overridden each time, aided by the price context.
 
-## Phase 3 — Review web UI + manifest (sketch)
+## Phase 3 — Review web UI + manifest (done)
 
-Local web app: upload PDFs → background extraction with a progress bar
-→ paginated per-receipt review form. Each receipt's form shows **the
-source PDF (or its rendered page image) side-by-side with the split
-form** so anything that looks off can be cross-checked against the
-original at a glance — item, price, price-history hint, editable per-item
-% and display name, live aggregate. On submit: mark receipts
-`REVIEWED`→`SUBMITTED`, update item split defaults, and write a
-**manifest** JSON to `~/.config/mint-csv-converter/receipt-manifest.json`
-keyed by `cardAmount` (primary — the amount that will actually match the
-Citi CSV, not `total`, since a purchase split across cash/Costco Cash
-Rewards/card only charges the card the remainder) with purchase-date
-proximity as tiebreak → `{ store, payer, percentages }`. Web stack
-(likely Vite + React + a
-small Hono/Express backend reusing `packages/receipts`) decided at this
-phase, not locked now.
+New package `packages/receipt-review`: a local, single-user web app —
+Hono backend + Vite/React frontend, no router library and no
+TanStack Query/Redux (the whole app is one upload screen, one queue
+list, and one review form, so plain `useState`/`useEffect` is enough).
+Upload PDFs → background extraction (kicked off via the existing
+`ingestReceipt`, tracked in an in-memory job map since a lost job on
+restart is harmless given `ingestReceipt`'s idempotent-by-content-hash
+design) with the client polling every 2s (extraction takes ~130-170s
+with the default model — SSE/WebSockets would be overkill for that
+cadence) → a review screen per receipt, one at a time, with **the
+source PDF embedded directly** (an `<iframe>` on the
+`GET /api/receipts/:id/source.pdf` endpoint — browsers render PDFs
+natively, so no rasterization is needed for the primary side-by-side
+view; a secondary on-demand-rendered, in-memory-only-cached page-image
+endpoint exists for thumbnails) alongside the split form — item,
+price, price-history hint, new-vs-learned provenance, editable per-item
+% and display name, a live client-side aggregate preview. `hono/client`
+generates a fully-typed fetch client from the server's own route
+definitions (`hc<AppType>()`), zero codegen; `@hono/zod-validator`
+gives the one JSON-bodied route (the line-item split PATCH) a properly
+typed request too, not just a typed response.
+
+**Submitting is a straight `EXTRACTED` → `SUBMITTED` transition, not
+the three-state `EXTRACTED`/`REVIEWED`/`SUBMITTED` sketched below** —
+`Receipt.status` is now a real Prisma `enum ReceiptStatus` (was a
+free-form string), but collapsed to two values. A separate `REVIEWED`
+status would only add a batch-submit UI concern (a distinct
+review-vs-submit action per receipt) with no real payoff for a
+single-person reviewer working one receipt at a time; `LineItem.reviewed`
+(also newly wired up — was an unused schema column before this phase)
+already carries the finer-grained "was this specific line looked at"
+signal. Submitting, in one transaction, upserts each item's
+`ItemSplitDefault` to the just-confirmed split (Phase 2's "the latest
+correction always wins" rule) and writes both the **manifest** JSON to
+`~/.config/mint-csv-converter/receipt-manifest.json` — a flat array of
+`{ receiptId, store, payer, cardAmount, purchaseDate, percentages }`
+entries, upserted by `receiptId` (not an object keyed by stringified
+`cardAmount`, since two receipts can legitimately share one) — and a
+**generated audit-copy** HTML file to
+`~/.config/mint-csv-converter/receipt-audits/<receiptId>.html` (see
+"Auditability" below for why that path, not literally next to the
+snapshot).
 
 **Auditability (annotated-PDF question).** Marking the *original* PDF in
 place (e.g. "37% / 63%" on the BLUEBERRIES line) is **not trivial** — that
@@ -391,11 +418,14 @@ PDF has no text layer and the JSON extraction has no per-line coordinates,
 so it would require adding coordinate-grounded OCR (Tesseract word boxes
 or a grounding model). Deferred stretch, gated on that. The auditability
 value is delivered cheaply instead by (1) the side-by-side UI above, and
-(2) a **generated audit copy** — our own clean HTML/PDF table (item ·
-price · split% · each person's share · receipt total · aggregate that
-lands in the sheet), written next to the JSON snapshot as a permanent,
-reviewable trail. In-place annotation of the original stays a later "nice
-to have."
+(2) a **generated audit copy** — our own clean HTML table (item · price ·
+split% · each person's share · receipt total · aggregate). This lives
+under `~/.config/mint-csv-converter/`, the same convention as the
+datastore/retained-PDFs/manifest, rather than literally "next to the
+[git-committed] JSON snapshot" as originally phrased — these are
+generated, potentially-numerous personal artifacts, not something that
+belongs in the git-tracked `data/` directory alongside the snapshot. In-place
+annotation of the original stays a later "nice to have."
 
 ## Phase 4 — Sync integration (sketch)
 
@@ -410,6 +440,13 @@ vs date) validated against a real export + manifest — Citi's posting date
 can differ from the receipt date by a day or two, so amount is the more
 reliable join. Unmatched variable rows fall back to today's `%`/`%`
 placeholder behavior (never block a sync).
+
+The manifest reader/writer types currently live in `packages/receipt-review`
+(see Phase 3), not `packages/receipts` — deliberately, so `packages/automation`
+doesn't gain a dependency that also carries Hono/React as transitive deps just
+to read a JSON file. When this phase is built, either give `automation` its
+own small reader for the manifest's (already-stable) shape, or promote just
+the type definition into `packages/receipts` at that point.
 
 ## Phase 5 — Output sorting (small, independent)
 
