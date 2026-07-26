@@ -2,6 +2,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { PrismaClient } from './db.js';
+import type { ReceiptStatus } from './generated/prisma/enums.js';
 
 export interface ParticipantSnapshotRow {
   id: number;
@@ -47,7 +48,8 @@ export interface ReceiptSnapshotRow {
   tax: number;
   total: number;
   cardAmount: number | null;
-  status: string;
+  status: ReceiptStatus;
+  submittedAt: string | null;
   reconciled: boolean;
   createdAt: string;
 }
@@ -150,6 +152,7 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
       total: r.total,
       cardAmount: r.cardAmount,
       status: r.status,
+      submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
       reconciled: r.reconciled,
       createdAt: r.createdAt.toISOString(),
     })),

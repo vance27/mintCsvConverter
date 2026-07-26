@@ -4,7 +4,17 @@ export { aggregateSplits, type AggregateLine } from './aggregate.js';
 export type { ExtractedReceipt, ExtractedLineItem } from './types.js';
 export { renderPdfPages } from './renderPdf.js';
 export { createOllamaClient, defaultOllamaModel, type VisionChatClient } from './ollamaClient.js';
-export { createPrismaClient, getPrisma, defaultDatabaseUrl } from './db.js';
+export { createPrismaClient, getPrisma, defaultDatabaseUrl, type PrismaClient } from './db.js';
+export type {
+  Item,
+  Participant,
+  Store,
+  Receipt,
+  LineItem,
+  LineItemSplit,
+  ReceiptTender,
+} from './generated/prisma/client.js';
+export { ReceiptStatus } from './generated/prisma/enums.js';
 export { extractReceipt, buildExtractionPrompt, type ExtractReceiptOptions } from './extractReceipt.js';
 export { ingestReceipt, type IngestOptions, type IngestDeps, type IngestResult } from './ingest.js';
 export { seedParticipants } from './seed.js';

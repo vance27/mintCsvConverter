@@ -41,7 +41,12 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
     }
     if (snapshot.receipts.length > 0) {
       await tx.receipt.createMany({
-        data: snapshot.receipts.map((r) => ({ ...r, purchaseDate: new Date(r.purchaseDate), createdAt: new Date(r.createdAt) })),
+        data: snapshot.receipts.map((r) => ({
+          ...r,
+          purchaseDate: new Date(r.purchaseDate),
+          createdAt: new Date(r.createdAt),
+          submittedAt: r.submittedAt ? new Date(r.submittedAt) : null,
+        })),
       });
     }
     if (snapshot.receiptTenders.length > 0) {

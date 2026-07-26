@@ -378,6 +378,7 @@
       "total": 236.92,
       "cardAmount": 236.92,
       "status": "EXTRACTED",
+      "submittedAt": null,
       "reconciled": true,
       "createdAt": "2026-07-26T02:14:20.330Z"
     }
