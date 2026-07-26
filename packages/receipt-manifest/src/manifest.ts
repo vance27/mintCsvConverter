@@ -17,7 +17,7 @@ export interface Manifest {
   entries: ManifestEntry[];
 }
 
-/** Where Phase 4's future sync step will read this from — same ~/.config/mint-csv-converter/ convention as the datastore and retained PDFs. */
+/** Where packages/automation's sync step reads this from — same ~/.config/mint-csv-converter/ convention as the datastore and retained PDFs. */
 export function defaultManifestPath(): string {
   const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
   return `${home}/.config/mint-csv-converter/receipt-manifest.json`;

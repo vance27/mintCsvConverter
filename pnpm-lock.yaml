@@ -123,6 +123,8 @@ importers:
         specifier: 6.8.1
         version: 6.8.1
 
+  packages/receipt-manifest: {}
+
   packages/receipt-review:
     dependencies:
       '@emotion/react':
@@ -137,6 +139,9 @@ importers:
       '@hono/zod-validator':
         specifier: 0.9.0
         version: 0.9.0(hono@4.12.32)(zod@4.4.3)
+      '@mint-csv-converter/receipt-manifest':
+        specifier: workspace:*
+        version: link:../receipt-manifest
       '@mint-csv-converter/receipts':
         specifier: workspace:*
         version: link:../receipts

@@ -17,6 +17,9 @@
   "references": [
     {
       "path": "../receipts"
+    },
+    {
+      "path": "../receipt-manifest"
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { aggregateSplits, ReceiptStatus, type AggregateLine, type PrismaClient } from '@mint-csv-converter/receipts';
-import { appendManifestEntry } from './manifest.js';
+import { appendManifestEntry } from '@mint-csv-converter/receipt-manifest';
 import { generateAuditHtml, writeAuditHtml } from './auditReport.js';
 
 export class UnresolvedLineItemsError extends Error {
