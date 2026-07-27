@@ -33,6 +33,8 @@ import {
   listImportBatches,
   updateImportBatch,
   updateImportBatchSchema,
+  deleteImportBatch,
+  ImportBatchHasSyncedTransactionsError,
   type AggregateLine,
   type PrismaClient,
   type VisionChatClient,
@@ -269,6 +271,21 @@ export function createApp(deps: AppDeps) {
     .patch('/api/import-batches/:id', zValidator('json', updateImportBatchSchema), async (c) => {
       const batch = await updateImportBatch(deps.prisma, parseIntParam(c.req.param('id')), c.req.valid('json'));
       return c.json(batch);
+    })
+
+    // Bulk-deletes an entire import batch and its staged transactions — but
+    // only if none of them have synced yet (see deleteImportBatch).
+    .delete('/api/import-batches/:id', async (c) => {
+      const id = parseIntParam(c.req.param('id'));
+      try {
+        await deleteImportBatch(deps.prisma, id);
+      } catch (error) {
+        if (error instanceof ImportBatchHasSyncedTransactionsError) {
+          throw new HTTPException(400, { message: error.message });
+        }
+        throw error;
+      }
+      return c.json({ ok: true });
     })
 
     // Edits a staged transaction's split type and/or soft-deletes it —

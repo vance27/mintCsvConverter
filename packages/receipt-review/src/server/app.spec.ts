@@ -342,6 +342,62 @@ describe('app', () => {
     expect(renamedBody).toEqual({ ...batches[0], title: 'June Citi export', description: 'Remember to pull the July return credit next time' });
   });
 
+  it('deletes an all-unsynced import batch and its transactions', async () => {
+    const { app } = setup();
+    const batch = await prisma.importBatch.create({
+      data: {
+        title: 'Test batch',
+        payer: 'Brian',
+        minDate: '07/01/2026',
+        maxDate: '07/02/2026',
+        sourceFilename: 'x.csv',
+        importedCount: 2,
+        skippedDuplicateCount: 0,
+        excludedCount: 0,
+      },
+    });
+    await prisma.importedTransaction.createMany({
+      data: [
+        { payer: 'Brian', date: '07/01/2026', description: 'Chipotle', amount: 25, splitType: 'Equally', importBatchId: batch.id },
+        { payer: 'Brian', date: '07/02/2026', description: 'Costco', amount: 150, splitType: 'Variably', importBatchId: batch.id },
+      ],
+    });
+
+    const res = await app.request(`/api/import-batches/${batch.id}`, { method: 'DELETE' });
+
+    expect(res.status).toBe(200);
+    await expect(prisma.importBatch.findUnique({ where: { id: batch.id } })).resolves.toBeNull();
+    await expect(prisma.importedTransaction.count({ where: { importBatchId: batch.id } })).resolves.toBe(0);
+  });
+
+  it('blocks deleting an import batch once any of its transactions have synced', async () => {
+    const { app } = setup();
+    const batch = await prisma.importBatch.create({
+      data: {
+        title: 'Test batch',
+        payer: 'Brian',
+        minDate: '07/01/2026',
+        maxDate: '07/02/2026',
+        sourceFilename: 'x.csv',
+        importedCount: 2,
+        skippedDuplicateCount: 0,
+        excludedCount: 0,
+      },
+    });
+    await prisma.importedTransaction.createMany({
+      data: [
+        { payer: 'Brian', date: '07/01/2026', description: 'Chipotle', amount: 25, splitType: 'Equally', importBatchId: batch.id, syncedAt: new Date() },
+        { payer: 'Brian', date: '07/02/2026', description: 'Costco', amount: 150, splitType: 'Variably', importBatchId: batch.id },
+      ],
+    });
+
+    const res = await app.request(`/api/import-batches/${batch.id}`, { method: 'DELETE' });
+
+    expect(res.status).toBe(400);
+    await expect(prisma.importBatch.findUnique({ where: { id: batch.id } })).resolves.not.toBeNull();
+    await expect(prisma.importedTransaction.count({ where: { importBatchId: batch.id } })).resolves.toBe(2);
+  });
+
   it('previews a Citi-shaped CSV and auto-detects the seeded default profile', async () => {
     const { app } = setup();
     const csv = ['Status,Date,Description,Debit,Credit,Member Name', 'Cleared,06/20/2026,Chipotle Mexican Grill,25.00,,BRIAN K VANCE'].join('\n');
