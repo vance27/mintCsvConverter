@@ -11,6 +11,7 @@
     "@googleapis/sheets": "13.0.2",
     "@mint-csv-converter/core": "workspace:*",
     "@mint-csv-converter/receipt-manifest": "workspace:*",
+    "@mint-csv-converter/receipts": "workspace:*",
     "google-auth-library": "10.5.0"
   }
 }

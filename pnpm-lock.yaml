@@ -119,6 +119,9 @@ importers:
       '@mint-csv-converter/receipt-manifest':
         specifier: workspace:*
         version: link:../receipt-manifest
+      '@mint-csv-converter/receipts':
+        specifier: workspace:*
+        version: link:../receipts
       google-auth-library:
         specifier: 10.5.0
         version: 10.5.0(supports-color@7.2.0)

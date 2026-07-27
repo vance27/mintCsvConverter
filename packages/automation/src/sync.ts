@@ -6,6 +6,7 @@ import {
   type TransactionRow,
 } from '@mint-csv-converter/core';
 import { readManifest, defaultManifestPath, type Manifest } from '@mint-csv-converter/receipt-manifest';
+import { getPrisma, loadPersonalExclusionsDict, loadVariableSplitPatterns, type PrismaClient } from '@mint-csv-converter/receipts';
 import { SheetsClient, defaultSheetsClient } from './sheetsClient.js';
 import { loadSyncState, saveSyncState, defaultSyncStatePath, type SyncState } from './syncState.js';
 import { toIsoDate, getPeriodLabel } from './dateUtils.js';
@@ -63,9 +64,21 @@ export interface SyncDeps {
   readManifest: () => Manifest;
 }
 
-export function defaultSyncDeps(): SyncDeps {
+/** Loads personalExclusions/splitRulesDict.VARIABLE from the DB (source of truth since the add_csv_rule_tables migration seeded it from CsvConverterFactory's old hardcoded defaults) into a fresh factory instance. */
+export async function loadDbBackedFactory(prisma: PrismaClient): Promise<CsvConverterFactory> {
+  const factory = new CsvConverterFactory();
+  const [personalExclusions, variablePatterns] = await Promise.all([
+    loadPersonalExclusionsDict(prisma),
+    loadVariableSplitPatterns(prisma),
+  ]);
+  factory.personalExclusions = personalExclusions;
+  factory.splitRulesDict = { VARIABLE: variablePatterns };
+  return factory;
+}
+
+export async function defaultSyncDeps(prisma: PrismaClient = getPrisma()): Promise<SyncDeps> {
   return {
-    factory: new CsvConverterFactory(),
+    factory: await loadDbBackedFactory(prisma),
     importFile: (path) => new ImportFileToLines(path).getResults(),
     exportInvalid: (lines, name) => new ExportFileToLines(lines).writeFile(name, 'INVALID'),
     sheetsClient: defaultSheetsClient(),
@@ -169,7 +182,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     return;
   }
 
-  const summary = await runSync(options, defaultSyncDeps());
+  const summary = await runSync(options, await defaultSyncDeps());
 
   console.log(`Synced ${summary.periodsSynced.length} period(s):`);
   for (const period of summary.periodsSynced) {

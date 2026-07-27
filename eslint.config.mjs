@@ -37,7 +37,7 @@ export default defineConfig(
             { sourceTag: 'scope:manifest', onlyDependOnLibsWithTags: [] },
             { sourceTag: 'scope:receipts', onlyDependOnLibsWithTags: [] },
             { sourceTag: 'scope:apps-script', onlyDependOnLibsWithTags: [] },
-            { sourceTag: 'scope:sheets', onlyDependOnLibsWithTags: ['scope:csv', 'scope:manifest'] },
+            { sourceTag: 'scope:sheets', onlyDependOnLibsWithTags: ['scope:csv', 'scope:manifest', 'scope:receipts'] },
             {
               sourceTag: 'scope:review-ui',
               onlyDependOnLibsWithTags: ['scope:csv', 'scope:manifest', 'scope:receipts', 'scope:sheets'],
