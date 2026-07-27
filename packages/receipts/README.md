@@ -150,10 +150,9 @@ nx run @mint-csv-converter/receipts:snapshot   # writes data/snapshot.json
 nx run @mint-csv-converter/receipts:restore     # rebuilds the DB from it
 ```
 
-The snapshot is plain, deterministically-ordered JSON — readable diffs,
-and safe to commit (to a private repo) since the datastore never stores
-the receipt's member number or card digits in the first place. `restore`
-is also how a fresh machine bootstraps.
+The snapshot is plain, deterministically-ordered JSON — readable diffs —
+but gitignored, kept local-only rather than committed. `restore` is also
+how a fresh machine bootstraps from a copy of that file.
 
 ## Package layout
 

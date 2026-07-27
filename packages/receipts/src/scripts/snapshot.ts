@@ -1,7 +1,7 @@
 import { getPrisma } from '../db.js';
 import { createSnapshot, writeSnapshotFile, defaultSnapshotPath } from '../snapshot.js';
 
-// Writes the current datastore to the git-tracked JSON backup (see
+// Writes the current datastore to the local JSON backup (gitignored — see
 // costco-receipt-importer.md). Run manually, or via `ingest.ts --snapshot`
 // right after an ingest run:
 //

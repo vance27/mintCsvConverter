@@ -125,16 +125,14 @@ export interface DatastoreSnapshot {
   csvImportProfiles?: CsvImportProfileSnapshotRow[];
 }
 
-/** Where the git-tracked JSON backup lives — see costco-receipt-importer.md's "SQLite vs Postgres, and git-versioned backups" section. */
+/** Where the local JSON backup lives (gitignored — see costco-receipt-importer.md's "SQLite vs Postgres, and git-versioned backups" section for the original rationale; no longer actually committed). */
 export function defaultSnapshotPath(): string {
   return fileURLToPath(new URL('../data/snapshot.json', import.meta.url));
 }
 
 /**
  * Exports the whole datastore to a plain, deterministically-ordered JSON
- * structure — no member numbers/card digits are stored in the datastore in
- * the first place, so this carries only benign item/price/split data and is
- * safe to commit (to a private repo) as a human-reviewable backup.
+ * structure — a local, human-reviewable backup (gitignored, not committed).
  */
 export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSnapshot> {
   const [

@@ -14,9 +14,12 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# SQLite datastore (receipts) — working DB is local-only; the JSON snapshot is what gets committed
+# SQLite datastore (receipts) — working DB is local-only.
 *.db
 *.db-journal
+
+# DB snapshot backup — local-only, not committed.
+packages/receipts/data/
 
 # Generated Prisma client (regenerated from schema via `prisma generate`)
 packages/receipts/src/generated/
