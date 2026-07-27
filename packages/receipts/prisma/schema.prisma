@@ -156,3 +156,47 @@ model LineItemSplit {
 
   @@unique([lineItemId, participantId])
 }
+
+// Staged rows from a Citi CSV import (packages/receipt-review's UI-driven
+// pipeline — see costco-receipt-importer.md's "Web UI: staged CSV import"
+// plan). Not used by packages/automation's CLI sync, which tracks state via
+// a separate date-based sync-state file instead.
+model ImportedTransaction {
+  id              Int      @id @default(autoincrement())
+  payer           String
+  // Raw MM/DD/YYYY, same convention as TransactionRow throughout the
+  // codebase — never a parsed DateTime, to avoid timezone pitfalls and stay
+  // consistent with core/automation's string-date handling.
+  date            String
+  description     String
+  amount          Float
+  splitType       String
+  excluded        Boolean  @default(false)
+  exclusionReason String?
+  createdAt       DateTime @default(now())
+  syncedAt        DateTime?
+  syncRunId       Int?
+
+  syncRun CsvSyncRun? @relation(fields: [syncRunId], references: [id])
+
+  // Re-importing an overlapping CSV export is idempotent: the same
+  // real-world transaction (by payer/date/description/amount) is only ever
+  // staged once, regardless of exclusion.
+  @@unique([payer, date, description, amount])
+}
+
+enum CsvSyncRunStatus {
+  DONE // every tab succeeded
+  PARTIAL // some tabs succeeded, some failed
+  ERROR // failed before any tab was attempted (e.g. no saved OAuth token)
+}
+
+model CsvSyncRun {
+  id        Int              @id @default(autoincrement())
+  createdAt DateTime         @default(now())
+  status    CsvSyncRunStatus
+  // JSON: { payerName, periodLabel, rowCount, status: 'SYNCED'|'FAILED', errorMessage? }[]
+  periodResultsJson String
+
+  transactions ImportedTransaction[]
+}

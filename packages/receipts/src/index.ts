@@ -13,8 +13,10 @@ export type {
   LineItem,
   LineItemSplit,
   ReceiptTender,
+  ImportedTransaction,
+  CsvSyncRun,
 } from './generated/prisma/client.js';
-export { ReceiptStatus } from './generated/prisma/enums.js';
+export { ReceiptStatus, CsvSyncRunStatus } from './generated/prisma/enums.js';
 export { extractReceipt, buildExtractionPrompt, type ExtractReceiptOptions } from './extractReceipt.js';
 export { ingestReceipt, type IngestOptions, type IngestDeps, type IngestResult } from './ingest.js';
 export { seedParticipants } from './seed.js';
