@@ -14,6 +14,7 @@ export type {
   LineItemSplit,
   ReceiptTender,
   ImportedTransaction,
+  ImportBatch,
   CsvSyncRun,
   PayerExclusionRule,
   VariableSplitRule,
@@ -55,6 +56,15 @@ export {
   type StoredCsvColumnMapping,
   type CreateCsvImportProfileInput,
 } from './csvImportProfiles.js';
+export {
+  listImportBatches,
+  createImportBatch,
+  updateImportBatch,
+  updateImportBatchSchema,
+  type ImportBatchView,
+  type CreateImportBatchInput,
+  type UpdateImportBatchInput,
+} from './importBatches.js';
 export { retainReceiptSource, defaultReceiptsBaseDir } from './receiptStorage.js';
 export { createSnapshot, writeSnapshotFile, defaultSnapshotPath, type DatastoreSnapshot } from './snapshot.js';
 export { readSnapshotFile, restoreSnapshot, restoreFromFile } from './restore.js';
