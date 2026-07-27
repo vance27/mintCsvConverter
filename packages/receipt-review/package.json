@@ -11,6 +11,8 @@
     "@emotion/styled": "11.14.1",
     "@hono/node-server": "2.0.11",
     "@hono/zod-validator": "0.9.0",
+    "@mint-csv-converter/automation": "workspace:*",
+    "@mint-csv-converter/core": "workspace:*",
     "@mint-csv-converter/receipt-manifest": "workspace:*",
     "@mint-csv-converter/receipts": "workspace:*",
     "@mui/icons-material": "9.2.0",

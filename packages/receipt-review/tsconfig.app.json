@@ -20,6 +20,12 @@
     },
     {
       "path": "../receipt-manifest"
+    },
+    {
+      "path": "../core"
+    },
+    {
+      "path": "../automation"
     }
   ]
 }

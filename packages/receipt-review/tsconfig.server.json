@@ -11,5 +11,10 @@
     "noEmit": true
   },
   "include": ["src/server", "vite.config.ts", "vitest.config.ts"],
-  "references": [{ "path": "../receipts/tsconfig.json" }, { "path": "../receipt-manifest/tsconfig.json" }]
+  "references": [
+    { "path": "../receipts/tsconfig.json" },
+    { "path": "../receipt-manifest/tsconfig.json" },
+    { "path": "../core" },
+    { "path": "../automation" }
+  ]
 }
