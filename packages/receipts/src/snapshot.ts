@@ -91,6 +91,16 @@ export interface VariableSplitRuleSnapshotRow {
   note: string | null;
   createdAt: string;
 }
+export interface CsvImportProfileSnapshotRow {
+  id: number;
+  name: string;
+  hasHeader: boolean;
+  columnCount: number;
+  headerSignature: string | null;
+  columnMappingJson: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
 
 export interface DatastoreSnapshot {
   version: 1 | 2;
@@ -108,6 +118,9 @@ export interface DatastoreSnapshot {
   // undefined, on snapshots createSnapshot itself writes (version 2).
   payerExclusionRules?: PayerExclusionRuleSnapshotRow[];
   variableSplitRules?: VariableSplitRuleSnapshotRow[];
+  // Same v1/early-v2-compat story as the two fields above — absent on any
+  // snapshot predating CsvImportProfile.
+  csvImportProfiles?: CsvImportProfileSnapshotRow[];
 }
 
 /** Where the git-tracked JSON backup lives — see costco-receipt-importer.md's "SQLite vs Postgres, and git-versioned backups" section. */
@@ -134,6 +147,7 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
     lineItemSplits,
     payerExclusionRules,
     variableSplitRules,
+    csvImportProfiles,
   ] = await Promise.all([
     prisma.participant.findMany({ orderBy: { id: 'asc' } }),
     prisma.store.findMany({ orderBy: { id: 'asc' } }),
@@ -146,6 +160,7 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
     prisma.lineItemSplit.findMany({ orderBy: { id: 'asc' } }),
     prisma.payerExclusionRule.findMany({ orderBy: { id: 'asc' } }),
     prisma.variableSplitRule.findMany({ orderBy: { id: 'asc' } }),
+    prisma.csvImportProfile.findMany({ orderBy: { id: 'asc' } }),
   ]);
 
   return {
@@ -213,6 +228,16 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
       pattern: r.pattern,
       note: r.note,
       createdAt: r.createdAt.toISOString(),
+    })),
+    csvImportProfiles: csvImportProfiles.map((p) => ({
+      id: p.id,
+      name: p.name,
+      hasHeader: p.hasHeader,
+      columnCount: p.columnCount,
+      headerSignature: p.headerSignature,
+      columnMappingJson: p.columnMappingJson,
+      createdAt: p.createdAt.toISOString(),
+      lastUsedAt: p.lastUsedAt ? p.lastUsedAt.toISOString() : null,
     })),
   };
 }

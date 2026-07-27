@@ -62,6 +62,20 @@ describe('snapshot + restore round trip', () => {
     });
     await prisma.payerExclusionRule.create({ data: { payer: 'BRIAN', pattern: 'SNAPSHOT TEST VENDOR' } });
     await prisma.variableSplitRule.create({ data: { pattern: 'Snapshot Test Store' } });
+    await prisma.csvImportProfile.create({
+      data: {
+        name: 'Snapshot Test Profile',
+        hasHeader: true,
+        columnCount: 4,
+        headerSignature: 'date,description,debit,credit',
+        columnMappingJson: JSON.stringify({
+          hasHeader: true,
+          dateColumn: { byName: 'date' },
+          descriptionColumn: { byName: 'description' },
+          amount: { mode: 'DEBIT_CREDIT', debitColumn: { byName: 'debit' }, creditColumn: { byName: 'credit' } },
+        }),
+      },
+    });
 
     return { prisma };
   }
@@ -80,6 +94,7 @@ describe('snapshot + restore round trip', () => {
     ]);
     expect(snapshot.payerExclusionRules).toContainEqual(expect.objectContaining({ payer: 'BRIAN', pattern: 'SNAPSHOT TEST VENDOR' }));
     expect(snapshot.variableSplitRules).toContainEqual(expect.objectContaining({ pattern: 'Snapshot Test Store' }));
+    expect(snapshot.csvImportProfiles).toContainEqual(expect.objectContaining({ name: 'Snapshot Test Profile', columnCount: 4 }));
 
     const { prisma: targetDb, cleanup } = createTestDb();
     cleanups.push(cleanup);
@@ -133,6 +148,7 @@ describe('snapshot + restore round trip', () => {
     // INSERTs, plus seedSampleData's own extra row.
     await expect(prisma.payerExclusionRule.count()).resolves.toBeGreaterThan(1);
     await expect(prisma.variableSplitRule.count()).resolves.toBeGreaterThan(1);
+    await expect(prisma.csvImportProfile.count()).resolves.toBe(1);
 
     await restoreSnapshot(prisma, {
       version: 2,
@@ -147,18 +163,25 @@ describe('snapshot + restore round trip', () => {
       lineItemSplits: [],
       payerExclusionRules: [],
       variableSplitRules: [],
+      csvImportProfiles: [],
     });
 
     await expect(prisma.participant.count()).resolves.toBe(0);
     await expect(prisma.receipt.count()).resolves.toBe(0);
     await expect(prisma.payerExclusionRule.count()).resolves.toBe(0);
     await expect(prisma.variableSplitRule.count()).resolves.toBe(0);
+    await expect(prisma.csvImportProfile.count()).resolves.toBe(0);
   });
 
   it('restores a v1 snapshot file (predating rule tables) without crashing', async () => {
     const { prisma: sourceDb } = await seedSampleData();
     const snapshot = await createSnapshot(sourceDb);
-    const { payerExclusionRules: _payerExclusionRules, variableSplitRules: _variableSplitRules, ...v1Shape } = snapshot;
+    const {
+      payerExclusionRules: _payerExclusionRules,
+      variableSplitRules: _variableSplitRules,
+      csvImportProfiles: _csvImportProfiles,
+      ...v1Shape
+    } = snapshot;
     const v1Snapshot = { ...v1Shape, version: 1 } as unknown as DatastoreSnapshot;
 
     const { prisma: targetDb, cleanup } = createTestDb();
@@ -168,5 +191,6 @@ describe('snapshot + restore round trip', () => {
     await expect(targetDb.participant.count()).resolves.toBe(2);
     await expect(targetDb.payerExclusionRule.count()).resolves.toBe(0);
     await expect(targetDb.variableSplitRule.count()).resolves.toBe(0);
+    await expect(targetDb.csvImportProfile.count()).resolves.toBe(0);
   });
 });

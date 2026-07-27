@@ -31,6 +31,7 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
     await tx.participant.deleteMany();
     await tx.payerExclusionRule.deleteMany();
     await tx.variableSplitRule.deleteMany();
+    await tx.csvImportProfile.deleteMany();
 
     if (snapshot.participants.length > 0) {
       await tx.participant.createMany({ data: snapshot.participants });
@@ -73,6 +74,16 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
     const variableSplitRules = snapshot.variableSplitRules ?? [];
     if (variableSplitRules.length > 0) {
       await tx.variableSplitRule.createMany({ data: variableSplitRules.map((r) => ({ ...r, createdAt: new Date(r.createdAt) })) });
+    }
+    const csvImportProfiles = snapshot.csvImportProfiles ?? [];
+    if (csvImportProfiles.length > 0) {
+      await tx.csvImportProfile.createMany({
+        data: csvImportProfiles.map((p) => ({
+          ...p,
+          createdAt: new Date(p.createdAt),
+          lastUsedAt: p.lastUsedAt ? new Date(p.lastUsedAt) : null,
+        })),
+      });
     }
   });
 }

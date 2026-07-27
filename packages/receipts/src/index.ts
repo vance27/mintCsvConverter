@@ -38,6 +38,17 @@ export {
   createVariableSplitRuleSchema,
   type CreateVariableSplitRuleInput,
 } from './variableSplitRules.js';
+export {
+  listCsvImportProfiles,
+  createCsvImportProfile,
+  deleteCsvImportProfile,
+  findMatchingCsvImportProfile,
+  createCsvImportProfileSchema,
+  csvColumnMappingSchema,
+  type CsvImportProfileView,
+  type StoredCsvColumnMapping,
+  type CreateCsvImportProfileInput,
+} from './csvImportProfiles.js';
 export { retainReceiptSource, defaultReceiptsBaseDir } from './receiptStorage.js';
 export { createSnapshot, writeSnapshotFile, defaultSnapshotPath, type DatastoreSnapshot } from './snapshot.js';
 export { readSnapshotFile, restoreSnapshot, restoreFromFile } from './restore.js';

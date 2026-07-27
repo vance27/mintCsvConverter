@@ -227,6 +227,28 @@ enum CsvSyncRunStatus {
   ERROR // failed before any tab was attempted (e.g. no saved OAuth token)
 }
 
+// A saved column-mapping for importing a non-Citi-shaped CSV (see
+// packages/core's CsvColumnMapping) — created via the receipt-review UI's
+// configurator the first time a new CSV shape is seen, then auto-detected
+// on future imports of the same shape via headerSignature (a strong
+// signal) or hasHeader+columnCount (a weaker fallback for headerless
+// CSVs). columnMappingJson mirrors core's CsvColumnMapping shape as JSON —
+// receipts is a foundational leaf and can't import core's type directly
+// (see csvImportProfiles.ts's independently-declared zod schema).
+model CsvImportProfile {
+  id                Int       @id @default(autoincrement())
+  name              String    @unique
+  hasHeader         Boolean
+  columnCount       Int
+  headerSignature   String?
+  columnMappingJson String
+  createdAt         DateTime  @default(now())
+  lastUsedAt        DateTime?
+
+  @@index([headerSignature])
+  @@index([hasHeader, columnCount])
+}
+
 model CsvSyncRun {
   id        Int              @id @default(autoincrement())
   createdAt DateTime         @default(now())
