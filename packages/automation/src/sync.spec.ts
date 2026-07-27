@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CsvConverterFactory, type TransactionRow } from '@mint-csv-converter/core';
-import type { Manifest } from '@mint-csv-converter/receipt-manifest';
+import type { ManifestEntry } from '@mint-csv-converter/receipts';
 import type { AddTransactionsRequest } from './sheetsClient.js';
 import { runSync, parseSyncArgs, type SyncDeps } from './sync.js';
 
@@ -14,7 +14,7 @@ function makeDeps(overrides: Partial<SyncDeps> = {}): SyncDeps {
     },
     loadSyncState: vi.fn(() => ({})),
     saveSyncState: vi.fn(),
-    readManifest: vi.fn((): Manifest => ({ version: 1, entries: [] })),
+    loadManifestEntries: vi.fn(async (): Promise<ManifestEntry[]> => []),
     ...overrides,
   };
 }
@@ -137,19 +137,16 @@ describe('runSync', () => {
         ['06/20/2026', 'Costco Wholesale', '', '150.00'],
       ],
       sheetsClient: { addTransactionsForPeriod },
-      readManifest: (): Manifest => ({
-        version: 1,
-        entries: [
-          {
-            receiptId: 1,
-            store: 'Costco',
-            payer: 'Brian',
-            cardAmount: 150.0,
-            purchaseDate: '2026-06-20',
-            percentages: { Brian: 62, Patrice: 38 },
-          },
-        ],
-      }),
+      loadManifestEntries: async (): Promise<ManifestEntry[]> => [
+        {
+          receiptId: 1,
+          store: 'Costco',
+          payer: 'Brian',
+          cardAmount: 150.0,
+          purchaseDate: '2026-06-20',
+          percentages: { Brian: 62, Patrice: 38 },
+        },
+      ],
     });
 
     await runSync({ inputFile: 'x.csv', name: 'Brian', syncStateFile: 'state.json' }, deps);

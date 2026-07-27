@@ -1,5 +1,5 @@
 import type { TransactionRow } from '@mint-csv-converter/core';
-import type { ManifestEntry } from '@mint-csv-converter/receipt-manifest';
+import type { ManifestEntry } from '@mint-csv-converter/receipts';
 import { toIsoDate } from './dateUtils.js';
 
 // Rounding-error tolerance between a Citi CSV amount and a receipt's

@@ -5,8 +5,14 @@ import {
   ExportFileToLines,
   type TransactionRow,
 } from '@mint-csv-converter/core';
-import { readManifest, defaultManifestPath, type Manifest } from '@mint-csv-converter/receipt-manifest';
-import { getPrisma, loadPersonalExclusionsDict, loadVariableSplitPatterns, type PrismaClient } from '@mint-csv-converter/receipts';
+import {
+  getPrisma,
+  loadPersonalExclusionsDict,
+  loadVariableSplitPatterns,
+  listManifestEntries,
+  type ManifestEntry,
+  type PrismaClient,
+} from '@mint-csv-converter/receipts';
 import { SheetsClient, defaultSheetsClient } from './sheetsClient.js';
 import { loadSyncState, saveSyncState, defaultSyncStatePath, type SyncState } from './syncState.js';
 import { toIsoDate, getPeriodLabel } from './dateUtils.js';
@@ -61,7 +67,7 @@ export interface SyncDeps {
   sheetsClient: Pick<SheetsClient, 'addTransactionsForPeriod'>;
   loadSyncState: (path: string) => SyncState;
   saveSyncState: (path: string, state: SyncState) => void;
-  readManifest: () => Manifest;
+  loadManifestEntries: () => Promise<ManifestEntry[]>;
 }
 
 /** Loads personalExclusions/splitRulesDict.VARIABLE from the DB (source of truth since the add_csv_rule_tables migration seeded it from CsvConverterFactory's old hardcoded defaults) into a fresh factory instance. */
@@ -84,7 +90,7 @@ export async function defaultSyncDeps(prisma: PrismaClient = getPrisma()): Promi
     sheetsClient: defaultSheetsClient(),
     loadSyncState,
     saveSyncState,
-    readManifest: () => readManifest(defaultManifestPath()),
+    loadManifestEntries: () => listManifestEntries(prisma),
   };
 }
 
@@ -116,7 +122,7 @@ export async function runSync(options: SyncOptions, deps: SyncDeps): Promise<Syn
   const skippedAsAlreadySynced = dataRows.length - newRows.length;
 
   const groups = groupRowsByPeriod(newRows);
-  const manifestEntries = deps.readManifest().entries;
+  const manifestEntries = await deps.loadManifestEntries();
 
   const periodsSynced: SyncSummary['periodsSynced'] = [];
   const allInvalidLines: TransactionRow[] = [];
