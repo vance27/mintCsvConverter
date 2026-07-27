@@ -24,8 +24,9 @@ import {
   type VisionChatClient,
 } from '@mint-csv-converter/receipts';
 import { getReceiptDetail, listReceipts } from './receiptQueries.js';
-import { listImportedTransactions } from './transactionQueries.js';
+import { listImportedTransactions, toTransactionSummary } from './transactionQueries.js';
 import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from './lineItemReview.js';
+import { TransactionSyncedError, updateImportedTransaction, updateImportedTransactionSchema } from './transactionMutations.js';
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
 import { UploadJobs } from './uploadJobs.js';
 import { ImportJobs } from './importJobs.js';
@@ -185,6 +186,24 @@ export function createApp(deps: AppDeps) {
     .get('/api/transactions', async (c) => {
       const transactions = await listImportedTransactions(deps.prisma);
       return c.json(transactions);
+    })
+
+    // Edits a staged transaction's split type and/or soft-deletes it —
+    // blocked once syncedAt is set (see transactionMutations.ts).
+    .patch('/api/transactions/:id', zValidator('json', updateImportedTransactionSchema), async (c) => {
+      const id = parseIntParam(c.req.param('id'));
+      const body = c.req.valid('json');
+      try {
+        await updateImportedTransaction(deps.prisma, id, body);
+      } catch (error) {
+        if (error instanceof TransactionSyncedError) {
+          throw new HTTPException(400, { message: error.message });
+        }
+        throw error;
+      }
+      const transaction = await deps.prisma.importedTransaction.findUniqueOrThrow({ where: { id } });
+      const receipts = await listReceipts(deps.prisma);
+      return c.json(toTransactionSummary(transaction, receipts));
     })
 
     // DB-backed replacement for CsvConverterFactory's hardcoded

@@ -334,6 +334,68 @@ describe('app', () => {
     expect(afterSubmit.find((t) => t.description === 'Costco Wholesale')?.receiptMatch?.status).toBe('SUBMITTED');
   });
 
+  it('edits a transaction split type and soft-deletes/undoes it, but blocks edits once synced', async () => {
+    const { app } = setup();
+    const transaction = await prisma.importedTransaction.create({
+      data: { payer: 'Brian', date: '07/03/2026', description: 'Chipotle', amount: 25, splitType: 'Equally' },
+    });
+
+    const patchSplitType = await app.request(`/api/transactions/${transaction.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ splitType: 'Variably' }),
+    });
+    expect(patchSplitType.status).toBe(200);
+    const afterSplitTypeEdit = (await patchSplitType.json()) as { splitType: string };
+    expect(afterSplitTypeEdit.splitType).toBe('Variably');
+
+    const patchRemove = await app.request(`/api/transactions/${transaction.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removed: true }),
+    });
+    expect(patchRemove.status).toBe(200);
+    const afterRemove = (await patchRemove.json()) as { removed: boolean; removedAt: string | null };
+    expect(afterRemove.removed).toBe(true);
+    expect(afterRemove.removedAt).not.toBeNull();
+
+    const listAfterRemove = (await (await app.request('/api/transactions')).json()) as { id: number; removed: boolean }[];
+    expect(listAfterRemove.find((t) => t.id === transaction.id)?.removed).toBe(true);
+
+    const patchUndo = await app.request(`/api/transactions/${transaction.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removed: false }),
+    });
+    expect(patchUndo.status).toBe(200);
+    const afterUndo = (await patchUndo.json()) as { removed: boolean; removedAt: string | null };
+    expect(afterUndo.removed).toBe(false);
+    expect(afterUndo.removedAt).toBeNull();
+
+    await prisma.importedTransaction.update({ where: { id: transaction.id }, data: { syncedAt: new Date() } });
+    const blockedPatch = await app.request(`/api/transactions/${transaction.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removed: true }),
+    });
+    expect(blockedPatch.status).toBe(400);
+  });
+
+  it('never syncs a soft-removed transaction', async () => {
+    const { app } = setup();
+    const transaction = await prisma.importedTransaction.create({
+      data: { payer: 'Brian', date: '07/03/2026', description: 'Chipotle', amount: 25, splitType: 'Equally' },
+    });
+    await app.request(`/api/transactions/${transaction.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ removed: true }),
+    });
+
+    const overview = (await (await app.request('/api/sync-overview')).json()) as { totalRows: number };
+    expect(overview.totalRows).toBe(0);
+  });
+
   type SyncRunJobJson = { status: string; result?: unknown; message?: string } | null;
 
   async function pollSyncRunCurrent(app: ReturnType<typeof createApp>): Promise<SyncRunJobJson> {

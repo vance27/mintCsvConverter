@@ -73,4 +73,31 @@ test.describe('receipt-review pipeline', () => {
     await expect(page.getByRole('cell', { name: '06/26' })).toBeVisible();
     await expect(page.getByRole('cell', { name: '07/26' })).toBeVisible();
   });
+
+  // Last in the serial sequence — it removes/re-adds and edits a staged
+  // row, which would otherwise perturb the row/tab counts the previous
+  // test asserts.
+  test('editing split type and removing/undoing a transaction works from Review transactions', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('tab', { name: 'Review transactions' }).click();
+
+    const chipotleRow = page.getByRole('row', { name: /Chipotle Mexican Grill/ });
+    await chipotleRow.getByRole('combobox').click();
+    await page.getByRole('option', { name: 'Variably' }).click();
+    await expect(chipotleRow.getByRole('combobox')).toHaveText('Variably');
+    await chipotleRow.getByRole('combobox').click();
+    await page.getByRole('option', { name: 'Equally' }).click();
+    await expect(chipotleRow.getByRole('combobox')).toHaveText('Equally');
+
+    const costcoRow = page.getByRole('row', { name: /Costco Wholesale/ });
+    await costcoRow.getByRole('button', { name: 'Remove transaction' }).click();
+    await expect(page.getByRole('cell', { name: 'Costco Wholesale' })).toHaveCount(0);
+
+    await page.getByRole('switch', { name: 'Show excluded/removed' }).click();
+    await expect(page.getByRole('cell', { name: 'Costco Wholesale' })).toBeVisible();
+    await expect(page.getByText('Removed', { exact: true })).toBeVisible();
+
+    await page.getByRole('row', { name: /Costco Wholesale/ }).getByRole('button', { name: 'Undo removal' }).click();
+    await expect(page.getByText('Removed', { exact: true })).toHaveCount(0);
+  });
 });

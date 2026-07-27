@@ -206,6 +206,12 @@ model ImportedTransaction {
   createdAt       DateTime @default(now())
   syncedAt        DateTime?
   syncRunId       Int?
+  // Set when the review UI soft-deletes this staged row (distinct from
+  // `excluded`, which is set once at import time by the personal-exclusion
+  // rules). Kept visible in the review table rather than hard-deleted, for
+  // audit-trail consistency with excluded rows. Never set once syncedAt is
+  // set — the sheet already reflects the prior value.
+  removedAt       DateTime?
 
   syncRun CsvSyncRun? @relation(fields: [syncRunId], references: [id])
 

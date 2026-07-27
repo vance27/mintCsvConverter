@@ -135,7 +135,7 @@ export async function listSyncRuns(prisma: PrismaClient): Promise<SyncRunSummary
 }
 
 function unsyncedTransactions(prisma: PrismaClient): Promise<ImportedTransaction[]> {
-  return prisma.importedTransaction.findMany({ where: { excluded: false, syncedAt: null } });
+  return prisma.importedTransaction.findMany({ where: { excluded: false, syncedAt: null, removedAt: null } });
 }
 
 // Not a plain space — a payer name could theoretically contain one; a NUL
