@@ -22,6 +22,34 @@ This was ported from an original Python implementation; see git history for that
 
 Root-level tooling: `pnpm-workspace.yaml`, `tsconfig.base.json` (strict mode, extended per-package), `.npmrc` (`save-exact=true`), and `pnpm-workspace.yaml`'s supply-chain settings (`minimumReleaseAge`, `blockExoticSubdeps`, `trustPolicy`, `allowBuilds`) — **dependency versions are pinned exactly, no `^`/`~` ranges**; use `pnpm add --save-exact` (or rely on `.npmrc`) when adding anything new, and update `allowBuilds` deliberately rather than blanket-approving postinstall scripts.
 
+## Dependency map
+
+The real edges between packages (from `nx graph`, not guessed from `package.json`) are a clean two-layer-plus-app shape:
+
+```mermaid
+graph LR
+  core["core (scope:csv)"]
+  manifest["receipt-manifest (scope:manifest)"]
+  receipts["receipts (scope:receipts)"]
+  appsScript["apps-script (scope:apps-script)"]
+  automation["automation (scope:sheets)"]
+  review["receipt-review (scope:review-ui)"]
+
+  automation --> core
+  automation --> manifest
+  review --> core
+  review --> automation
+  review --> manifest
+  review --> receipts
+```
+
+- **Foundational leaves** — `core`, `receipt-manifest`, `receipts`, `apps-script` — have **zero** internal dependencies on each other. Each is independently usable and testable in isolation: `core` and `automation` (below) both double as standalone CLIs (`node dist/main.js ...`, `nx run automation:sync`/`:authorize`) as well as libraries; `receipts` has its own CLI targets (`ingest`/`seed`/`snapshot`/`restore`); `receipt-manifest` is pure library glue with no CLI of its own; `apps-script` is deployed independently via `clasp` and isn't even part of the TS project-reference graph (see "Google Sheets automation" below).
+- **`automation`** is the one mid-tier package — it only builds on the foundational leaves (`core` + `receipt-manifest`), never on `receipts` or `receipt-review`.
+- **`receipt-review`** is the single integrator — the actual running pipeline (Hono API + Vite/React) that depends on everything else. Nothing depends on it.
+- `receipt-manifest` exists as its own package specifically so `receipt-review` (which writes it) and `automation` (which reads it) don't have to pull in each other's dependency tree just to share one small type — the running example of this layering paying off, not just a diagram.
+
+**This is enforced, not just descriptive.** Each package's `project.json` carries a `scope:*` tag, and `eslint.config.mjs`'s `@nx/enforce-module-boundaries` rule constrains exactly which scopes each may depend on (foundational leaves: none; `scope:sheets`: only the leaves; `scope:review-ui`: anything). `pnpm lint` catches a violation immediately — e.g. `core` importing from `automation` fails with a circular-dependency error (since `automation` already depends on `core`), and `receipt-manifest` importing from `receipts` fails with "cannot depend on any libs with tags" even though no cycle exists.
+
 ## Running it
 
 ```bash
@@ -97,6 +125,7 @@ Extends the same web app to cover the CSV-to-Sheets half of the pipeline, previo
 - **Transaction review** ([transactionQueries.ts](packages/receipt-review/src/server/transactionQueries.ts), [transactionReceiptMatch.ts](packages/receipt-review/src/server/transactionReceiptMatch.ts)) — `GET /api/transactions` lists every staged transaction with, for `'Variably'` ones, a live match against the `Receipt` table (payer + store-substring-of-description + `cardAmount` within a cent, closest `purchaseDate` tiebreak — same idea as `automation`'s `matchManifestEntry`, but query-based against live data so an **unsubmitted** receipt shows up too, not just submitted ones from the manifest file). `TransactionReviewPage.tsx` links straight through to the existing `ReceiptReviewPage` to resolve a "needs review" match.
 - **Sync overview + run** ([syncRun.ts](packages/receipt-review/src/server/syncRun.ts), [syncRunJobs.ts](packages/receipt-review/src/server/syncRunJobs.ts)) — `buildSyncOverview` is a pure read (zero Sheets calls) grouping unsynced transactions by `(payer, period)` tab; the overview **is** the confirmation step, no separate modal. `runSyncOverview`, only invoked from an explicit `POST /api/sync-runs`, processes each tab sequentially via `automation`'s `SheetsClient`/`matchManifestEntry` (reused as-is — `runSync`/`sync.ts` itself is *not* reused, since its date-based dedup doesn't fit a staged-transaction model and just caused a real duplicate-row incident) and **keeps going past a failed tab** rather than aborting, recording one `CsvSyncRun` per attempt and marking only the successfully-synced transactions — a failed tab's rows stay unsynced and get retried automatically by the next run, no separate retry mechanism needed. `SyncRunJobs`/`GoogleAuthJobs` are single-slot (not a job map) since only one sync/reauth makes sense at a time.
 - **Google OAuth reauthorize from the UI** — `scripts/authorize.ts`'s interactive flow (opens a browser, catches the redirect) was extracted into `packages/automation`'s exported `runAuthorizeFlow`, now also callable from `POST /api/google-auth/reauthorize`; `GET /api/google-auth/status` reports connection state via the new `hasSavedCredentials` (a non-throwing `existsSync` check). The Sync Overview page shows a connected/not-connected chip with a "Reauthorize" button.
+  - **Known issue: reauthorize can fail under `serve-api`'s `--watch`** — `@google-cloud/local-auth` opens the consent-screen browser via `open@7.4.2` (a pinned transitive dependency), and on macOS that package's fire-and-forget spawn path (`opn(url, {wait: false})`) doesn't attach an `error` listener to the spawned `/usr/bin/open` child. If that spawn ever errors, Node's unhandled-`error`-event throws synchronously and kills the whole process instantly (no stack trace, no crash report) — and `node --watch` silently relaunches it, wiping in-memory job state and tearing down the OAuth callback listener mid-flow. Symptom: the browser lands on the `localhost:<random port>` callback with a valid `code` param but gets "connection refused," and `GET /api/google-auth/status` shows `job: null` as if reauthorize was never clicked. **Workaround**: kill the `--watch`ed backend and run it once without `--watch` (`node --env-file=.env --import tsx packages/receipt-review/src/server/index.ts`) to reauthorize, then restart normally with `nx run @mint-csv-converter/receipt-review:dev` for everyday hot-reload work. No confirmed upstream fix found (not our code — see `open`'s own history of "unhandled 'error' event" spawn-failure crashes for the general class of bug); revisit if a newer `@google-cloud/local-auth`/`open` fixes it.
 - **Caveat, called out rather than solved**: the CLI's `sync-state.json` date-based tracking and this UI's per-row `syncedAt` tracking are independent — mixing both paths for the same payer/period could double-sync a transaction.
 - **e2e** ([e2e/](packages/receipt-review/e2e/)) — a dedicated Playwright suite (`nx run @mint-csv-converter/receipt-review:e2e`, hand-written like `deploy`/`seed`/`ingest` and deliberately not swept into `run-many`) drives a real browser against a real, production-built server, but always against an isolated DB (`e2e/.tmp/e2e.db`, migrated fresh by `globalSetup.ts` via `testDb.ts`'s exported `migrateDbAt`) — never the real one. It never clicks "Run sync"/"Reauthorize" (those touch real Sheets/OAuth and stay covered by `app.spec.ts`'s fake-injected tests), so it needs no secrets. `e2e/playwright.config.ts` lives inside `e2e/` with its own standalone `tsconfig.json` (no project references) rather than at the package root, because Playwright's own tsconfig auto-discovery fully resolves whatever `tsconfig.json` it finds nearest — including `references` — and choked trying to follow this package's composite build graph when the config sat next to the existing solution-file `tsconfig.json`.
 

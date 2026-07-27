@@ -1,5 +1,6 @@
 {
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "tags": ["type:lib", "scope:receipts"],
   "metadata": {
     "targetGroups": {
       "prisma": ["prisma-generate", "prisma-migrate", "prisma-studio"]
