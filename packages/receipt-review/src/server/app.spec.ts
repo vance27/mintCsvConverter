@@ -239,4 +239,37 @@ describe('app', () => {
 
     expect(await prisma.importedTransaction.count()).toBe(1);
   });
+
+  it('matches a Variably transaction to its receipt, submitted or not, and leaves Equally/unmatched ones alone', async () => {
+    const { app } = setup();
+    const seeded = await seedBasicReceipt(prisma); // Costco, Brian, cardAmount 20, purchaseDate 2026-07-01, EXTRACTED
+
+    await prisma.importedTransaction.createMany({
+      data: [
+        { payer: 'Brian', date: '07/01/2026', description: 'Costco Wholesale', amount: 20, splitType: 'Variably' },
+        { payer: 'Brian', date: '07/02/2026', description: 'Target', amount: 99, splitType: 'Variably' },
+        { payer: 'Brian', date: '07/03/2026', description: 'Chipotle', amount: 25, splitType: 'Equally' },
+      ],
+    });
+
+    const res = await app.request('/api/transactions');
+    expect(res.status).toBe(200);
+    const transactions = (await res.json()) as {
+      description: string;
+      splitType: string;
+      receiptMatch: { receiptId: number; status: string; aggregate: Record<string, number> } | null;
+    }[];
+
+    expect(transactions.find((t) => t.description === 'Costco Wholesale')?.receiptMatch).toEqual({
+      receiptId: seeded.receiptId,
+      status: 'EXTRACTED',
+      aggregate: { Brian: 50, Patrice: 50 },
+    });
+    expect(transactions.find((t) => t.description === 'Target')?.receiptMatch).toBeNull();
+    expect(transactions.find((t) => t.description === 'Chipotle')?.receiptMatch).toBeNull();
+
+    await prisma.receipt.update({ where: { id: seeded.receiptId }, data: { status: 'SUBMITTED', submittedAt: new Date() } });
+    const afterSubmit = (await (await app.request('/api/transactions')).json()) as typeof transactions;
+    expect(afterSubmit.find((t) => t.description === 'Costco Wholesale')?.receiptMatch?.status).toBe('SUBMITTED');
+  });
 });

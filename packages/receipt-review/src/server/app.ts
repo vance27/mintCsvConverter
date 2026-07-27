@@ -10,6 +10,7 @@ import {
   type VisionChatClient,
 } from '@mint-csv-converter/receipts';
 import { getReceiptDetail, listReceipts } from './receiptQueries.js';
+import { listImportedTransactions } from './transactionQueries.js';
 import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from './lineItemReview.js';
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
 import { UploadJobs } from './uploadJobs.js';
@@ -141,6 +142,11 @@ export function createApp(deps: AppDeps) {
         throw new HTTPException(404, { message: 'Unknown job id' });
       }
       return c.json(job);
+    })
+
+    .get('/api/transactions', async (c) => {
+      const transactions = await listImportedTransactions(deps.prisma);
+      return c.json(transactions);
     })
 
     .get('/api/receipts/:id/source.pdf', async (c) => {
