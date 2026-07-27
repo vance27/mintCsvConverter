@@ -22,6 +22,7 @@ export type {
 export { ReceiptStatus, CsvSyncRunStatus } from './generated/prisma/enums.js';
 export { extractReceipt, buildExtractionPrompt, type ExtractReceiptOptions } from './extractReceipt.js';
 export { ingestReceipt, type IngestOptions, type IngestDeps, type IngestResult } from './ingest.js';
+export { listManifestEntries, type ManifestEntry } from './receiptManifest.js';
 export { seedParticipants } from './seed.js';
 export {
   listPayerExclusionRules,
