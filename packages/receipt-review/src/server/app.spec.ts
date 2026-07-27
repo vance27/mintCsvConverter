@@ -43,7 +43,7 @@ describe('app', () => {
       prisma,
       client: fakeClient({}),
       receiptsBaseDir: join(dir, 'retained'),
-      submitOptions: { manifestPath: join(dir, 'manifest.json'), auditDir: join(dir, 'audits') },
+      submitOptions: { auditDir: join(dir, 'audits') },
       ...overrides,
     });
     return { app };

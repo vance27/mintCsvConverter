@@ -10,7 +10,7 @@ import { SyncOverviewPage } from './pages/SyncOverviewPage.js';
 import { RulesSettingsPage } from './pages/RulesSettingsPage.js';
 import { SheetEmbedPage } from './pages/SheetEmbedPage.js';
 
-type SubmitResult = { aggregate: Record<string, number>; manifestPath: string; auditPath: string };
+type SubmitResult = { aggregate: Record<string, number>; auditPath: string };
 
 type View =
   | { name: 'upload' }
@@ -81,7 +81,6 @@ export function App() {
       <SubmittedPage
         aggregate={view.result.aggregate}
         auditPath={view.result.auditPath}
-        manifestPath={view.result.manifestPath}
         wasUpdate={view.wasUpdate}
         onBackToQueue={() => setView({ name: 'queue' })}
       />

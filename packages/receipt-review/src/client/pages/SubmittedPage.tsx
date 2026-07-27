@@ -3,12 +3,11 @@ import { Box, Button, Container, Paper, Stack, Typography } from '@mui/material'
 interface SubmittedPageProps {
   aggregate: Record<string, number>;
   auditPath: string;
-  manifestPath: string;
   wasUpdate: boolean;
   onBackToQueue: () => void;
 }
 
-export function SubmittedPage({ aggregate, auditPath, manifestPath, wasUpdate, onBackToQueue }: SubmittedPageProps) {
+export function SubmittedPage({ aggregate, auditPath, wasUpdate, onBackToQueue }: SubmittedPageProps) {
   return (
     <Container maxWidth="sm" sx={{ py: 8 }}>
       <Paper sx={{ p: 4 }}>
@@ -19,15 +18,11 @@ export function SubmittedPage({ aggregate, auditPath, manifestPath, wasUpdate, o
           </Typography>
           {wasUpdate ? (
             <Typography color="text.secondary">
-              The existing manifest entry for this receipt was updated in place, not duplicated.
+              The split for this receipt was updated — the next sync will use the new percentages automatically.
             </Typography>
           ) : null}
           <Typography color="text.secondary">
-            Manifest entry at{' '}
-            <Box component="code" sx={{ bgcolor: 'background.default', px: 0.5, borderRadius: 0.5 }}>
-              {manifestPath}
-            </Box>
-            , audit copy at{' '}
+            Audit copy at{' '}
             <Box component="code" sx={{ bgcolor: 'background.default', px: 0.5, borderRadius: 0.5 }}>
               {auditPath}
             </Box>

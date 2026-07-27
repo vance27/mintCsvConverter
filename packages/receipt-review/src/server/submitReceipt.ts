@@ -1,5 +1,4 @@
 import { aggregateSplits, ReceiptStatus, type AggregateLine, type PrismaClient } from '@mint-csv-converter/receipts';
-import { appendManifestEntry } from '@mint-csv-converter/receipt-manifest';
 import { generateAuditHtml, writeAuditHtml } from './auditReport.js';
 
 export class UnresolvedLineItemsError extends Error {
@@ -10,13 +9,11 @@ export class UnresolvedLineItemsError extends Error {
 
 export interface SubmitReceiptResult {
   aggregate: Record<string, number>;
-  manifestPath: string;
   auditPath: string;
 }
 
 export interface SubmitReceiptOptions {
-  /** Overrides for tests only — default to the real ~/.config/mint-csv-converter/ locations. */
-  manifestPath?: string;
+  /** Override for tests only — defaults to the real ~/.config/mint-csv-converter/ location. */
   auditDir?: string;
 }
 
@@ -24,8 +21,10 @@ export interface SubmitReceiptOptions {
  * Finalizes a receipt: requires every line item to be reviewed, upserts each
  * reviewed item's ItemSplitDefault to this receipt's just-confirmed percent
  * (Phase 2's explicit "the latest correction always wins" rule), transitions
- * the receipt straight to SUBMITTED, and writes both the manifest entry and
- * the generated audit-copy HTML.
+ * the receipt straight to SUBMITTED, and writes the generated audit-copy
+ * HTML. Receipt.status = SUBMITTED plus its LineItem/LineItemSplit rows is
+ * itself the durable "manifest entry" now — see packages/receipts'
+ * listManifestEntries, which derives one live from exactly this data.
  */
 export async function submitReceipt(
   prisma: PrismaClient,
@@ -70,18 +69,6 @@ export async function submitReceipt(
     await tx.receipt.update({ where: { id: receiptId }, data: { status: ReceiptStatus.SUBMITTED, submittedAt: new Date() } });
   });
 
-  const manifestPath = appendManifestEntry(
-    {
-      receiptId: receipt.id,
-      store: receipt.store.name,
-      payer: receipt.payer.name,
-      cardAmount: receipt.cardAmount ?? receipt.total,
-      purchaseDate: receipt.purchaseDate.toISOString().slice(0, 10),
-      percentages: aggregate,
-    },
-    options.manifestPath,
-  );
-
   const auditPath = writeAuditHtml(
     receipt.id,
     generateAuditHtml({
@@ -102,5 +89,5 @@ export async function submitReceipt(
     options.auditDir,
   );
 
-  return { aggregate, manifestPath, auditPath };
+  return { aggregate, auditPath };
 }

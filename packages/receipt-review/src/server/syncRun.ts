@@ -1,6 +1,5 @@
 import { getPeriodLabel, matchManifestEntry, type SheetsClient } from '@mint-csv-converter/automation';
-import { readManifest } from '@mint-csv-converter/receipt-manifest';
-import { CsvSyncRunStatus, type ImportedTransaction, type PrismaClient } from '@mint-csv-converter/receipts';
+import { CsvSyncRunStatus, listManifestEntries, type ImportedTransaction, type PrismaClient } from '@mint-csv-converter/receipts';
 
 export interface SyncOverviewGroup {
   payer: string;
@@ -71,7 +70,7 @@ export async function runSyncOverview(deps: RunSyncDeps): Promise<SyncRunResult>
   }
 
   const groups = groupByPayerPeriod(transactions);
-  const manifestEntries = readManifest().entries;
+  const manifestEntries = await listManifestEntries(deps.prisma);
 
   const periodResults: PeriodResult[] = [];
   const syncedTransactionIds: number[] = [];
