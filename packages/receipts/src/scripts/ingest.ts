@@ -70,10 +70,12 @@ async function main(): Promise<void> {
     if (tenders.length > 0) {
       console.log(`  Tender: ${tenders.map((t) => `${t.kind} $${t.amount.toFixed(2)}`).join(', ')}`);
     }
-    if (result.cardAmount !== receiptRow.total) {
-      console.log(
-        `  Card-matched amount: $${result.cardAmount.toFixed(2)} (total $${receiptRow.total.toFixed(2)} — partially paid by non-card tender)`,
-      );
+    // total is only null for a not-yet-extracted placeholder row — this
+    // ingestReceipt call just ran to completion (result.skipped is false),
+    // so it's always populated by this point.
+    const total = receiptRow.total ?? 0;
+    if (result.cardAmount !== total) {
+      console.log(`  Card-matched amount: $${result.cardAmount.toFixed(2)} (total $${total.toFixed(2)} — partially paid by non-card tender)`);
     }
   }
 

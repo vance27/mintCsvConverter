@@ -46,7 +46,7 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
       await tx.receipt.createMany({
         data: snapshot.receipts.map((r) => ({
           ...r,
-          purchaseDate: new Date(r.purchaseDate),
+          purchaseDate: r.purchaseDate ? new Date(r.purchaseDate) : null,
           createdAt: new Date(r.createdAt),
           submittedAt: r.submittedAt ? new Date(r.submittedAt) : null,
         })),

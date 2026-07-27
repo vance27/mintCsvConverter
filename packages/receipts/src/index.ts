@@ -21,7 +21,15 @@ export type {
 } from './generated/prisma/client.js';
 export { ReceiptStatus, CsvSyncRunStatus } from './generated/prisma/enums.js';
 export { extractReceipt, buildExtractionPrompt, type ExtractReceiptOptions } from './extractReceipt.js';
-export { ingestReceipt, type IngestOptions, type IngestDeps, type IngestResult } from './ingest.js';
+export {
+  ingestReceipt,
+  queueReceiptForIngest,
+  runIngestExtraction,
+  type IngestOptions,
+  type IngestDeps,
+  type IngestResult,
+  type QueueReceiptResult,
+} from './ingest.js';
 export { listManifestEntries, type ManifestEntry } from './receiptManifest.js';
 export { seedParticipants } from './seed.js';
 export {

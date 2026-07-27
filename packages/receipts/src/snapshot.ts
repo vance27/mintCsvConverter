@@ -43,15 +43,17 @@ export interface ReceiptSnapshotRow {
   payerId: number;
   sourceSha256: string;
   sourcePath: string;
-  purchaseDate: string;
-  subtotal: number;
-  tax: number;
-  total: number;
+  originalFilename: string | null;
+  purchaseDate: string | null;
+  subtotal: number | null;
+  tax: number | null;
+  total: number | null;
   cardAmount: number | null;
   status: ReceiptStatus;
   submittedAt: string | null;
   reconciled: boolean;
   createdAt: string;
+  extractionError: string | null;
 }
 export interface ReceiptTenderSnapshotRow {
   id: number;
@@ -192,7 +194,8 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
       payerId: r.payerId,
       sourceSha256: r.sourceSha256,
       sourcePath: r.sourcePath,
-      purchaseDate: r.purchaseDate.toISOString(),
+      originalFilename: r.originalFilename,
+      purchaseDate: r.purchaseDate ? r.purchaseDate.toISOString() : null,
       subtotal: r.subtotal,
       tax: r.tax,
       total: r.total,
@@ -201,6 +204,7 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
       submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
       reconciled: r.reconciled,
       createdAt: r.createdAt.toISOString(),
+      extractionError: r.extractionError,
     })),
     receiptTenders: receiptTenders.map((t) => ({ id: t.id, receiptId: t.receiptId, kind: t.kind, label: t.label, amount: t.amount })),
     lineItems: lineItems.map((l) => ({

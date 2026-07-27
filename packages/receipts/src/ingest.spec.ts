@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ingestReceipt, type IngestDeps } from './ingest.js';
+import { ingestReceipt, queueReceiptForIngest, runIngestExtraction, type IngestDeps } from './ingest.js';
 import { seedParticipants } from './seed.js';
 import { createTestDb } from './testing/testDb.js';
 import type { VisionChatClient } from './ollamaClient.js';
@@ -202,5 +202,95 @@ describe('ingestReceipt', () => {
     const deps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
 
     await expect(ingestReceipt(pdfPath, { store: 'Costco', payer: 'Nobody' }, deps)).rejects.toThrow(/No participant named "Nobody"/);
+  });
+});
+
+describe('queueReceiptForIngest / runIngestExtraction', () => {
+  const tempDirs: string[] = [];
+  const cleanups: (() => void)[] = [];
+
+  afterEach(() => {
+    for (const cleanup of cleanups.splice(0)) cleanup();
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function setup() {
+    const { prisma, cleanup } = createTestDb();
+    cleanups.push(cleanup);
+    const workDir = mkdtempSync(join(tmpdir(), 'ingest-queue-test-'));
+    tempDirs.push(workDir);
+    return { prisma, workDir };
+  }
+
+  it('creates a QUEUED placeholder row with originalFilename and no purchaseDate/total yet', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const pdfPath = writeFixturePdf(workDir, 'placeholder.pdf');
+    const deps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
+
+    const { receiptId, alreadyQueued } = await queueReceiptForIngest(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+    expect(alreadyQueued).toBe(false);
+    const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+    expect(receipt.status).toBe('QUEUED');
+    expect(receipt.originalFilename).toBe('placeholder.pdf');
+    expect(receipt.purchaseDate).toBeNull();
+    expect(receipt.total).toBeNull();
+    await expect(prisma.lineItem.count()).resolves.toBe(0);
+  });
+
+  it('re-queuing the same content hash while still QUEUED returns the same row instead of duplicating', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const pdfPath = writeFixturePdf(workDir, 'dup.pdf');
+    const deps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
+
+    const first = await queueReceiptForIngest(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+    const second = await queueReceiptForIngest(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+    expect(second.alreadyQueued).toBe(true);
+    expect(second.receiptId).toBe(first.receiptId);
+    await expect(prisma.receipt.count()).resolves.toBe(1);
+  });
+
+  it('sets FAILED with the error message when extraction throws, instead of leaving the row stuck EXTRACTING', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const pdfPath = writeFixturePdf(workDir, 'fails.pdf');
+    const failingClient: VisionChatClient = { chat: vi.fn(async () => { throw new Error('Ollama connection refused'); }) };
+    const deps: IngestDeps = { prisma, client: failingClient, receiptsBaseDir: join(workDir, 'store') };
+
+    const { receiptId } = await queueReceiptForIngest(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+    await expect(runIngestExtraction(receiptId, deps)).rejects.toThrow(/Ollama connection refused/);
+
+    const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+    expect(receipt.status).toBe('FAILED');
+    expect(receipt.extractionError).toMatch(/Ollama connection refused/);
+  });
+
+  it('re-queuing a FAILED row resets it to QUEUED and clears extractionError, reusing the same row', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const pdfPath = writeFixturePdf(workDir, 'retry.pdf');
+    const failingClient: VisionChatClient = { chat: vi.fn(async () => { throw new Error('boom'); }) };
+    const failingDeps: IngestDeps = { prisma, client: failingClient, receiptsBaseDir: join(workDir, 'store') };
+
+    const { receiptId } = await queueReceiptForIngest(pdfPath, { store: 'Costco', payer: 'Brian' }, failingDeps);
+    await expect(runIngestExtraction(receiptId, failingDeps)).rejects.toThrow('boom');
+
+    const workingDeps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
+    const retried = await queueReceiptForIngest(pdfPath, { store: 'Costco', payer: 'Brian' }, workingDeps);
+
+    expect(retried.alreadyQueued).toBe(false);
+    expect(retried.receiptId).toBe(receiptId);
+    const requeued = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+    expect(requeued.status).toBe('QUEUED');
+    expect(requeued.extractionError).toBeNull();
+    await expect(prisma.receipt.count()).resolves.toBe(1);
+
+    const result = await runIngestExtraction(receiptId, workingDeps);
+    expect(result.reconciled).toBe(true);
+    const finished = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+    expect(finished.status).toBe('EXTRACTED');
   });
 });

@@ -39,12 +39,16 @@ export async function listManifestEntries(prisma: PrismaClient): Promise<Manifes
       splits: Object.fromEntries(lineItem.splits.map((split) => [split.participant.name, split.percent])),
     }));
 
+    // total/purchaseDate are typed nullable (a QUEUED/EXTRACTING/FAILED
+    // placeholder row has neither yet), but this query is filtered to
+    // SUBMITTED — reachable only via a completed EXTRACTED transition that
+    // always populates both — so they're never actually null here.
     return {
       receiptId: receipt.id,
       store: receipt.store.name,
       payer: receipt.payer.name,
-      cardAmount: receipt.cardAmount ?? receipt.total,
-      purchaseDate: receipt.purchaseDate.toISOString().slice(0, 10),
+      cardAmount: receipt.cardAmount ?? receipt.total ?? 0,
+      purchaseDate: (receipt.purchaseDate ?? receipt.createdAt).toISOString().slice(0, 10),
       percentages: aggregateSplits(aggregateLines, participantNames),
     };
   });

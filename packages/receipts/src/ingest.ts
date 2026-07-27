@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
 import { extractReconciledReceipt } from './extractReconciled.js';
 import type { VisionChatClient } from './ollamaClient.js';
 import { cardAmount } from './tender.js';
@@ -37,43 +38,94 @@ export interface IngestResult {
   attempts: number;
 }
 
+export interface QueueReceiptResult {
+  receiptId: number;
+  /** True when this hash already had a Receipt row that's already queued, in progress, extracted, or submitted — nothing new was created. */
+  alreadyQueued: boolean;
+}
+
 /**
- * Ingests one receipt PDF: extracts its line items via the VLM, resolves
- * each item by (store, itemCode) — falling back to a normalized name only
- * when no code is present — seeds each line's split from that item's
- * learned typical split (or an even default for a never-seen item), records
- * a price observation, reconciles the extraction, and persists everything
- * in one transaction. Idempotent: re-ingesting the same PDF (by content
- * hash) is a no-op.
+ * Fast half of ingestion: hashes the file, retains it to permanent storage,
+ * resolves store/payer, and creates a placeholder Receipt row (status
+ * QUEUED) — or reuses an existing one by content hash, which is what makes
+ * re-uploading the same PDF idempotent. A row stuck FAILED from a prior
+ * attempt is reset to QUEUED and reused rather than duplicated, so retrying
+ * doesn't require re-uploading. Does no VLM work — safe to await directly
+ * from an HTTP request handler.
  */
-export async function ingestReceipt(pdfPath: string, options: IngestOptions, deps: IngestDeps): Promise<IngestResult> {
-  const { prisma, client } = deps;
+export async function queueReceiptForIngest(
+  pdfPath: string,
+  options: IngestOptions,
+  deps: IngestDeps,
+): Promise<QueueReceiptResult> {
+  const { prisma } = deps;
   const sourceSha256 = createHash('sha256').update(readFileSync(pdfPath)).digest('hex');
 
   const existing = await prisma.receipt.findUnique({ where: { sourceSha256 } });
   if (existing) {
-    return {
-      receiptId: existing.id,
-      skipped: true,
-      reconciled: existing.reconciled,
-      newItemCount: 0,
-      aggregate: {},
-      cardAmount: existing.cardAmount ?? existing.total,
-      attempts: 0,
-    };
+    if (existing.status === 'FAILED') {
+      await prisma.receipt.update({ where: { id: existing.id }, data: { status: 'QUEUED', extractionError: null } });
+      return { receiptId: existing.id, alreadyQueued: false };
+    }
+    // EXTRACTED/SUBMITTED (already fully done), or QUEUED/EXTRACTING (a
+    // genuine concurrent duplicate upload of the same bytes, already in
+    // flight) — either way there's nothing new to enqueue.
+    return { receiptId: existing.id, alreadyQueued: true };
   }
-
-  const {
-    receipt: extracted,
-    reconcile: reconcileResult,
-    attempts,
-  } = await extractReconciledReceipt(pdfPath, client, { store: options.store, model: options.model });
 
   const store = await findOrCreateStore(prisma, options.store);
   const payer = await findParticipantOrThrow(prisma, options.payer);
+  const sourcePath = retainReceiptSource(pdfPath, sourceSha256, deps.receiptsBaseDir);
+
+  const created = await prisma.receipt.create({
+    data: {
+      storeId: store.id,
+      payerId: payer.id,
+      sourceSha256,
+      sourcePath,
+      originalFilename: basename(pdfPath),
+      status: 'QUEUED',
+    },
+  });
+  return { receiptId: created.id, alreadyQueued: false };
+}
+
+/**
+ * Slow half of ingestion: runs the VLM extraction/reconciliation against an
+ * already-queued receipt's retained PDF, then fills in the same placeholder
+ * row in place (rather than creating a new one) plus its LineItem/
+ * LineItemSplit/ReceiptTender/PriceObservation rows, all in one transaction.
+ * On a thrown extraction error, the row is marked FAILED with the error
+ * message instead of being left stuck EXTRACTING forever. A failed
+ * *reconciliation* (the extraction succeeded but its arithmetic doesn't add
+ * up) is not an error here — that still lands on EXTRACTED with
+ * reconciled: false, exactly as before this split existed.
+ */
+export async function runIngestExtraction(receiptId: number, deps: IngestDeps, options: { model?: string } = {}): Promise<IngestResult> {
+  const { prisma, client } = deps;
+  const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId }, include: { store: true } });
+  await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'EXTRACTING' } });
+
+  let extracted: Awaited<ReturnType<typeof extractReconciledReceipt>>['receipt'];
+  let reconcileResult: Awaited<ReturnType<typeof extractReconciledReceipt>>['reconcile'];
+  let attempts: number;
+  try {
+    ({
+      receipt: extracted,
+      reconcile: reconcileResult,
+      attempts,
+    } = await extractReconciledReceipt(receipt.sourcePath, client, { store: receipt.store.name, model: options.model }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'FAILED', extractionError: message } });
+    throw error;
+  }
+
   const activeParticipants = await prisma.participant.findMany({ where: { active: true }, orderBy: { id: 'asc' } });
   if (activeParticipants.length === 0) {
-    throw new Error('No active participants configured — seed at least one Participant before ingesting.');
+    const message = 'No active participants configured — seed at least one Participant before ingesting.';
+    await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'FAILED', extractionError: message } });
+    throw new Error(message);
   }
 
   let newItemCount = 0;
@@ -81,7 +133,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
   const aggregateLines: AggregateLine[] = [];
 
   for (const extractedItem of extracted.items) {
-    const { item, isNew, splitPercents } = await resolveItem(prisma, store.id, extractedItem, activeParticipants);
+    const { item, isNew, splitPercents } = await resolveItem(prisma, receipt.storeId, extractedItem, activeParticipants);
     if (isNew) {
       newItemCount++;
     }
@@ -93,17 +145,13 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
     });
   }
 
-  const sourcePath = retainReceiptSource(pdfPath, sourceSha256, deps.receiptsBaseDir);
   const purchaseDate = new Date(extracted.purchaseDate);
   const cardAmountValue = cardAmount(extracted.tenders, extracted.total);
 
-  const receipt = await prisma.$transaction(async (tx) => {
-    const created = await tx.receipt.create({
+  await prisma.$transaction(async (tx) => {
+    await tx.receipt.update({
+      where: { id: receiptId },
       data: {
-        storeId: store.id,
-        payerId: payer.id,
-        sourceSha256,
-        sourcePath,
         purchaseDate,
         subtotal: extracted.subtotal,
         tax: extracted.tax,
@@ -117,7 +165,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
     if (extracted.tenders.length > 0) {
       await tx.receiptTender.createMany({
         data: extracted.tenders.map((tender) => ({
-          receiptId: created.id,
+          receiptId,
           kind: tender.kind,
           label: tender.label,
           amount: tender.amount,
@@ -128,7 +176,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
     for (const { item, extractedItem, splitPercents } of resolved) {
       const lineItem = await tx.lineItem.create({
         data: {
-          receiptId: created.id,
+          receiptId,
           itemId: item.id,
           rawItemCode: extractedItem.itemCode,
           rawName: extractedItem.rawName,
@@ -150,7 +198,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
       await tx.priceObservation.create({
         data: {
           itemId: item.id,
-          receiptId: created.id,
+          receiptId,
           unitPrice: extractedItem.unitPrice,
           quantity: extractedItem.quantity,
           discountAmount: extractedItem.discountAmount,
@@ -160,8 +208,6 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
 
       await tx.item.update({ where: { id: item.id }, data: { lastSeenName: extractedItem.rawName } });
     }
-
-    return created;
   });
 
   const aggregate = aggregateSplits(
@@ -170,7 +216,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
   );
 
   return {
-    receiptId: receipt.id,
+    receiptId,
     skipped: false,
     reconciled: reconcileResult.reconciled,
     newItemCount,
@@ -178,6 +224,31 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
     cardAmount: cardAmountValue,
     attempts,
   };
+}
+
+/**
+ * Ingests one receipt PDF end-to-end: queues it (idempotent by content
+ * hash), then immediately runs extraction — the original one-call contract,
+ * kept for the CLI and for tests that don't need queue semantics. The
+ * upload queue (packages/receipt-review's UploadQueue) instead calls
+ * queueReceiptForIngest/runIngestExtraction separately so it can enforce
+ * one-at-a-time extraction across concurrent uploads.
+ */
+export async function ingestReceipt(pdfPath: string, options: IngestOptions, deps: IngestDeps): Promise<IngestResult> {
+  const { receiptId, alreadyQueued } = await queueReceiptForIngest(pdfPath, options, deps);
+  if (alreadyQueued) {
+    const existing = await deps.prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+    return {
+      receiptId,
+      skipped: true,
+      reconciled: existing.reconciled,
+      newItemCount: 0,
+      aggregate: {},
+      cardAmount: existing.cardAmount ?? existing.total ?? 0,
+      attempts: 0,
+    };
+  }
+  return runIngestExtraction(receiptId, deps, { model: options.model });
 }
 
 async function resolveItem(
