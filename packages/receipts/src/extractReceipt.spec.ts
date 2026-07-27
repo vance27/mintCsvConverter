@@ -112,4 +112,9 @@ describe('buildExtractionPrompt', () => {
     expect(buildExtractionPrompt('Target')).not.toContain('Costco warehouse receipt');
     expect(buildExtractionPrompt(undefined)).not.toContain('Costco warehouse receipt');
   });
+
+  it('includes a worked example of the /-referenced discount-line format', () => {
+    expect(buildExtractionPrompt('Costco')).toContain('/1774692');
+    expect(buildExtractionPrompt('Costco')).toMatch(/discountAmount 14\.00/);
+  });
 });
