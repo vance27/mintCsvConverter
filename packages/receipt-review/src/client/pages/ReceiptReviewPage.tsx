@@ -1,6 +1,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InferResponseType } from 'hono/client';
-import { Alert, Box, Chip, Container, Divider, Grid, Paper, Slider, Stack, TextField, Typography, Button } from '@mui/material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import {
+  Alert,
+  Box,
+  Chip,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  Grid,
+  IconButton,
+  Paper,
+  Slider,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+  Button,
+} from '@mui/material';
 import { api } from '../lib/api.js';
 
 type ReceiptDetail = InferResponseType<(typeof api.receipts)[':id']['$get']>;
@@ -17,6 +37,8 @@ interface Draft {
   displayName: string;
   /** Slider value: 0 = 100% left participant, 100 = 100% right participant. */
   rightPercent: number;
+  /** Reviewer-editable "what was actually paid" for this line — defaults to lineTotal - discountAmount. */
+  netPrice: number;
 }
 
 /**
@@ -36,6 +58,7 @@ function draftFromLineItem(line: LineItemDetail, leftName: string, rightName: st
   return {
     displayName: line.displayName ?? '',
     rightPercent: line.splits[rightName] ?? 100 - (line.splits[leftName] ?? 50),
+    netPrice: line.lineTotal - line.discountAmount,
   };
 }
 
@@ -44,6 +67,8 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
   const [drafts, setDrafts] = useState<Record<number, Draft>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState<number | null>(null);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
 
   const [leftName, rightName] = useMemo(() => (detail ? resolveNames(detail.lineItems) : ['Brian', 'Patrice']), [detail]);
 
@@ -68,7 +93,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
     let netTotal = 0;
     for (const line of detail.lineItems) {
       const draft = drafts[line.id];
-      const net = line.lineTotal - line.discountAmount;
+      const net = draft?.netPrice ?? line.lineTotal - line.discountAmount;
       const rightPercent = draft?.rightPercent ?? 50;
       netTotal += net;
       rightTotal += net * (rightPercent / 100);
@@ -82,6 +107,34 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
       [rightName]: Math.round((rightTotal / netTotal) * 100),
     };
   }, [detail, drafts, leftName, rightName]);
+
+  const liveTotal = useMemo(() => {
+    if (!detail) {
+      return 0;
+    }
+    return detail.lineItems.reduce((sum, line) => sum + (drafts[line.id]?.netPrice ?? line.lineTotal - line.discountAmount), 0);
+  }, [detail, drafts]);
+
+  async function deleteLine(lineItemId: number): Promise<void> {
+    setDeletingLineId(lineItemId);
+    try {
+      const res = await api.receipts[':id']['line-items'][':lineItemId'].$delete({
+        param: { id: String(receiptId), lineItemId: String(lineItemId) },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDetail(data);
+        setDrafts((prev) => {
+          const next = { ...prev };
+          delete next[lineItemId];
+          return next;
+        });
+      }
+    } finally {
+      setDeletingLineId(null);
+      setConfirmingDeleteId(null);
+    }
+  }
 
   async function submit(): Promise<void> {
     if (!detail) {
@@ -101,7 +154,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
           const splits = { [leftName]: 100 - (draft?.rightPercent ?? 50), [rightName]: draft?.rightPercent ?? 50 };
           return api.receipts[':id']['line-items'][':lineItemId'].$patch({
             param: { id: String(receiptId), lineItemId: String(line.id) },
-            json: { splits, displayName: draft?.displayName || undefined },
+            json: { splits, displayName: draft?.displayName || undefined, netPrice: draft?.netPrice },
           });
         }),
       );
@@ -180,13 +233,13 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
               ) : null}
             </Stack>
             <Typography color="text.secondary">
-              Paid by {detail.payer}. Total: ${detail.total.toFixed(2)}.
+              Paid by {detail.payer}. Total: ${detail.total.toFixed(2)} · Live total: ${liveTotal.toFixed(2)}.
               {detail.reconciled ? '' : ' ⚠ low confidence — check carefully against the PDF.'}
             </Typography>
             {error ? <Alert severity="error">{error}</Alert> : null}
 
             {detail.lineItems.map((line) => {
-              const draft = drafts[line.id] ?? { displayName: line.displayName ?? '', rightPercent: 50 };
+              const draft = drafts[line.id] ?? { displayName: line.displayName ?? '', rightPercent: 50, netPrice: line.lineTotal - line.discountAmount };
               const changePercent = line.priceHistory.changePercent;
               return (
                 <Paper key={line.id} sx={{ p: 2 }}>
@@ -207,15 +260,41 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                         color={line.provenance === 'new' ? 'secondary' : 'default'}
                         variant="outlined"
                       />
+                      <Tooltip title="Remove this line item">
+                        <span>
+                          <IconButton
+                            size="small"
+                            disabled={deletingLineId === line.id}
+                            onClick={() => setConfirmingDeleteId(line.id)}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </span>
+                      </Tooltip>
                     </Stack>
                     <Typography variant="body2" color="text.secondary">
-                      ${line.unitPrice.toFixed(2)} × {line.quantity} = ${line.lineTotal.toFixed(2)}
+                      Printed: ${line.unitPrice.toFixed(2)} × {line.quantity} = ${line.lineTotal.toFixed(2)}
+                      {line.discountAmount !== 0 ? ` · discount $${line.discountAmount.toFixed(2)}` : ''}
                       {line.priceHistory.previousUnitPrice === null
                         ? ''
                         : changePercent !== null && Math.abs(changePercent) > 1
                           ? ` · was $${line.priceHistory.previousUnitPrice.toFixed(2)} (${changePercent > 0 ? '+' : ''}${changePercent.toFixed(0)}%)`
                           : ' · no price change'}
                     </Typography>
+                    <TextField
+                      label="Price paid"
+                      type="number"
+                      size="small"
+                      value={draft.netPrice}
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (!Number.isNaN(value)) {
+                          setDrafts((prev) => ({ ...prev, [line.id]: { ...draft, netPrice: value } }));
+                        }
+                      }}
+                      slotProps={{ htmlInput: { step: 0.01, min: 0 } }}
+                      sx={{ maxWidth: 160 }}
+                    />
                     <Box sx={{ px: 1 }}>
                       <Stack direction="row" sx={{ justifyContent: 'space-between' }}>
                         <Typography variant="caption">{leftName}</Typography>
@@ -245,6 +324,25 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
           </Stack>
         </Grid>
       </Grid>
+      <Dialog open={confirmingDeleteId !== null} onClose={() => setConfirmingDeleteId(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Remove this line item?</DialogTitle>
+        <DialogContent>
+          <Typography>This can't be undone.</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmingDeleteId(null)} disabled={deletingLineId !== null}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => confirmingDeleteId !== null && void deleteLine(confirmingDeleteId)}
+            variant="contained"
+            color="error"
+            disabled={deletingLineId !== null}
+          >
+            Remove
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }
