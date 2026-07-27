@@ -80,7 +80,14 @@ model PriceObservation {
 }
 
 enum ReceiptStatus {
+  // Placeholder row created immediately on upload, before extraction runs.
+  QUEUED
+  // Set while the upload queue's worker is actively extracting this one.
+  EXTRACTING
   EXTRACTED
+  // A thrown extraction error (not a failed reconciliation, which still
+  // lands on EXTRACTED with reconciled: false) — see extractionError below.
+  FAILED
   SUBMITTED
 }
 
@@ -90,28 +97,39 @@ model Receipt {
   payerId      Int
   sourceSha256 String        @unique
   sourcePath   String
-  purchaseDate DateTime
-  subtotal     Float
-  tax          Float
-  total        Float
+  // The uploaded file's own name, captured at enqueue time so a
+  // QUEUED/EXTRACTING/FAILED row has something meaningful to show before
+  // extraction has run. Never overwritten afterward. Nullable since rows
+  // ingested before this field existed don't have one.
+  originalFilename String?
+  // Unknown until extraction succeeds — null for a QUEUED/EXTRACTING/FAILED row.
+  purchaseDate DateTime?
+  subtotal     Float?
+  tax          Float?
+  total        Float?
   // Portion of `total` actually charged to a card — the amount that will
   // match a Citi CSV transaction. Differs from `total` when a purchase was
   // split across tender types (e.g. partly cash or Costco Cash Rewards).
-  // Null only for receipts ingested before this field existed; ingest.ts
-  // always populates it going forward (falling back to `total` when no
-  // tender breakdown was extracted).
+  // Null only for receipts ingested before this field existed, or not yet
+  // extracted; ingest.ts always populates it once extraction succeeds
+  // (falling back to `total` when no tender breakdown was extracted).
   cardAmount   Float?
-  status       ReceiptStatus @default(EXTRACTED)
+  status       ReceiptStatus @default(QUEUED)
   // Set when the review UI (Phase 3) transitions this receipt to SUBMITTED.
   submittedAt  DateTime?
   reconciled   Boolean       @default(false)
   createdAt    DateTime      @default(now())
+  // The last extraction attempt's error message — set only when status is
+  // FAILED, cleared when the row is requeued for retry.
+  extractionError String?
 
   store             Store              @relation(fields: [storeId], references: [id])
   payer             Participant        @relation(fields: [payerId], references: [id])
   lineItems         LineItem[]
   priceObservations PriceObservation[]
   tenders           ReceiptTender[]
+
+  @@index([status, createdAt])
 }
 
 // One row per payment line on the receipt footer (card, cash, Costco Cash
