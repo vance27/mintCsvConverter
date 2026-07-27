@@ -15,11 +15,29 @@ export type {
   ReceiptTender,
   ImportedTransaction,
   CsvSyncRun,
+  PayerExclusionRule,
+  VariableSplitRule,
 } from './generated/prisma/client.js';
 export { ReceiptStatus, CsvSyncRunStatus } from './generated/prisma/enums.js';
 export { extractReceipt, buildExtractionPrompt, type ExtractReceiptOptions } from './extractReceipt.js';
 export { ingestReceipt, type IngestOptions, type IngestDeps, type IngestResult } from './ingest.js';
 export { seedParticipants } from './seed.js';
+export {
+  listPayerExclusionRules,
+  createPayerExclusionRule,
+  deletePayerExclusionRule,
+  loadPersonalExclusionsDict,
+  createPayerExclusionRuleSchema,
+  type CreatePayerExclusionRuleInput,
+} from './payerExclusionRules.js';
+export {
+  listVariableSplitRules,
+  createVariableSplitRule,
+  deleteVariableSplitRule,
+  loadVariableSplitPatterns,
+  createVariableSplitRuleSchema,
+  type CreateVariableSplitRuleInput,
+} from './variableSplitRules.js';
 export { retainReceiptSource, defaultReceiptsBaseDir } from './receiptStorage.js';
 export { createSnapshot, writeSnapshotFile, defaultSnapshotPath, type DatastoreSnapshot } from './snapshot.js';
 export { readSnapshotFile, restoreSnapshot, restoreFromFile } from './restore.js';

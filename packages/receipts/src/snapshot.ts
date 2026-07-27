@@ -78,9 +78,22 @@ export interface LineItemSplitSnapshotRow {
   participantId: number;
   percent: number;
 }
+export interface PayerExclusionRuleSnapshotRow {
+  id: number;
+  payer: string;
+  pattern: string;
+  note: string | null;
+  createdAt: string;
+}
+export interface VariableSplitRuleSnapshotRow {
+  id: number;
+  pattern: string;
+  note: string | null;
+  createdAt: string;
+}
 
 export interface DatastoreSnapshot {
-  version: 1;
+  version: 1 | 2;
   participants: ParticipantSnapshotRow[];
   stores: StoreSnapshotRow[];
   items: ItemSnapshotRow[];
@@ -90,6 +103,11 @@ export interface DatastoreSnapshot {
   receiptTenders: ReceiptTenderSnapshotRow[];
   lineItems: LineItemSnapshotRow[];
   lineItemSplits: LineItemSplitSnapshotRow[];
+  // Absent (undefined) when read from a v1 snapshot file — restoreSnapshot
+  // treats that the same as an empty array. Always present, never
+  // undefined, on snapshots createSnapshot itself writes (version 2).
+  payerExclusionRules?: PayerExclusionRuleSnapshotRow[];
+  variableSplitRules?: VariableSplitRuleSnapshotRow[];
 }
 
 /** Where the git-tracked JSON backup lives — see costco-receipt-importer.md's "SQLite vs Postgres, and git-versioned backups" section. */
@@ -104,21 +122,34 @@ export function defaultSnapshotPath(): string {
  * safe to commit (to a private repo) as a human-reviewable backup.
  */
 export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSnapshot> {
-  const [participants, stores, items, itemSplitDefaults, priceObservations, receipts, receiptTenders, lineItems, lineItemSplits] =
-    await Promise.all([
-      prisma.participant.findMany({ orderBy: { id: 'asc' } }),
-      prisma.store.findMany({ orderBy: { id: 'asc' } }),
-      prisma.item.findMany({ orderBy: { id: 'asc' } }),
-      prisma.itemSplitDefault.findMany({ orderBy: { id: 'asc' } }),
-      prisma.priceObservation.findMany({ orderBy: { id: 'asc' } }),
-      prisma.receipt.findMany({ orderBy: { id: 'asc' } }),
-      prisma.receiptTender.findMany({ orderBy: { id: 'asc' } }),
-      prisma.lineItem.findMany({ orderBy: { id: 'asc' } }),
-      prisma.lineItemSplit.findMany({ orderBy: { id: 'asc' } }),
-    ]);
+  const [
+    participants,
+    stores,
+    items,
+    itemSplitDefaults,
+    priceObservations,
+    receipts,
+    receiptTenders,
+    lineItems,
+    lineItemSplits,
+    payerExclusionRules,
+    variableSplitRules,
+  ] = await Promise.all([
+    prisma.participant.findMany({ orderBy: { id: 'asc' } }),
+    prisma.store.findMany({ orderBy: { id: 'asc' } }),
+    prisma.item.findMany({ orderBy: { id: 'asc' } }),
+    prisma.itemSplitDefault.findMany({ orderBy: { id: 'asc' } }),
+    prisma.priceObservation.findMany({ orderBy: { id: 'asc' } }),
+    prisma.receipt.findMany({ orderBy: { id: 'asc' } }),
+    prisma.receiptTender.findMany({ orderBy: { id: 'asc' } }),
+    prisma.lineItem.findMany({ orderBy: { id: 'asc' } }),
+    prisma.lineItemSplit.findMany({ orderBy: { id: 'asc' } }),
+    prisma.payerExclusionRule.findMany({ orderBy: { id: 'asc' } }),
+    prisma.variableSplitRule.findMany({ orderBy: { id: 'asc' } }),
+  ]);
 
   return {
-    version: 1,
+    version: 2,
     participants: participants.map((p) => ({ id: p.id, name: p.name, active: p.active })),
     stores: stores.map((s) => ({ id: s.id, name: s.name })),
     items: items.map((i) => ({
@@ -170,6 +201,19 @@ export async function createSnapshot(prisma: PrismaClient): Promise<DatastoreSna
       reviewed: l.reviewed,
     })),
     lineItemSplits: lineItemSplits.map((s) => ({ id: s.id, lineItemId: s.lineItemId, participantId: s.participantId, percent: s.percent })),
+    payerExclusionRules: payerExclusionRules.map((r) => ({
+      id: r.id,
+      payer: r.payer,
+      pattern: r.pattern,
+      note: r.note,
+      createdAt: r.createdAt.toISOString(),
+    })),
+    variableSplitRules: variableSplitRules.map((r) => ({
+      id: r.id,
+      pattern: r.pattern,
+      note: r.note,
+      createdAt: r.createdAt.toISOString(),
+    })),
   };
 }
 

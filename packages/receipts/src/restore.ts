@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs';
 import type { PrismaClient } from './db.js';
 import { defaultSnapshotPath, type DatastoreSnapshot } from './snapshot.js';
 
-/** Reads and lightly validates a snapshot file (checks its version tag). */
+/** Reads and lightly validates a snapshot file (checks its version tag). Accepts v1 files (predating payerExclusionRules/variableSplitRules) as well as the current v2. */
 export function readSnapshotFile(path: string = defaultSnapshotPath()): DatastoreSnapshot {
   const parsed = JSON.parse(readFileSync(path, 'utf-8')) as DatastoreSnapshot;
-  if (parsed.version !== 1) {
+  if (parsed.version !== 1 && parsed.version !== 2) {
     throw new Error(`Unsupported snapshot version: ${String(parsed.version)}`);
   }
   return parsed;
@@ -29,6 +29,8 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
     await tx.item.deleteMany();
     await tx.store.deleteMany();
     await tx.participant.deleteMany();
+    await tx.payerExclusionRule.deleteMany();
+    await tx.variableSplitRule.deleteMany();
 
     if (snapshot.participants.length > 0) {
       await tx.participant.createMany({ data: snapshot.participants });
@@ -63,6 +65,14 @@ export async function restoreSnapshot(prisma: PrismaClient, snapshot: DatastoreS
     }
     if (snapshot.priceObservations.length > 0) {
       await tx.priceObservation.createMany({ data: snapshot.priceObservations.map((o) => ({ ...o, observedAt: new Date(o.observedAt) })) });
+    }
+    const payerExclusionRules = snapshot.payerExclusionRules ?? [];
+    if (payerExclusionRules.length > 0) {
+      await tx.payerExclusionRule.createMany({ data: payerExclusionRules.map((r) => ({ ...r, createdAt: new Date(r.createdAt) })) });
+    }
+    const variableSplitRules = snapshot.variableSplitRules ?? [];
+    if (variableSplitRules.length > 0) {
+      await tx.variableSplitRule.createMany({ data: variableSplitRules.map((r) => ({ ...r, createdAt: new Date(r.createdAt) })) });
     }
   });
 }

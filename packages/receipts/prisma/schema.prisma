@@ -157,6 +157,36 @@ model LineItemSplit {
   @@unique([lineItemId, participantId])
 }
 
+// DB-backed replacement for CsvConverterFactory's hardcoded
+// defaultPersonalExclusions (packages/core/src/csvConverterFactory.ts) —
+// seeded once from those values by the add_csv_rule_tables migration, then
+// authoritative from both packages/automation's CLI sync and
+// packages/receipt-review's UI import flow. `payer` is stored uppercased,
+// matching CsvConverterFactory.isValidLine's `name.toUpperCase()` lookup.
+model PayerExclusionRule {
+  id        Int      @id @default(autoincrement())
+  payer     String
+  pattern   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([payer, pattern])
+  @@index([payer])
+}
+
+// DB-backed replacement for CsvConverterFactory's hardcoded
+// defaultSplitRulesDict.VARIABLE vendor list — same seeding story as
+// PayerExclusionRule above. splitRulesDict.SHARED is deliberately NOT
+// ported here: it's never read by isVariableSplit (ordinary/joint-bill
+// transactions already default to the same "Equally" bucket), so an
+// editable DB row for it would misleadingly imply it affects behavior.
+model VariableSplitRule {
+  id        Int      @id @default(autoincrement())
+  pattern   String   @unique
+  note      String?
+  createdAt DateTime @default(now())
+}
+
 // Staged rows from a Citi CSV import (packages/receipt-review's UI-driven
 // pipeline — see costco-receipt-importer.md's "Web UI: staged CSV import"
 // plan). Not used by packages/automation's CLI sync, which tracks state via
