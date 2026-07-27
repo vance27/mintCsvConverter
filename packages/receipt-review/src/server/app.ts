@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import {
   defaultSheetsClient,
   hasSavedCredentials as automationHasSavedCredentials,
@@ -29,6 +30,9 @@ import {
   createCsvImportProfile,
   deleteCsvImportProfile,
   createCsvImportProfileSchema,
+  listImportBatches,
+  updateImportBatch,
+  updateImportBatchSchema,
   type AggregateLine,
   type PrismaClient,
   type VisionChatClient,
@@ -72,6 +76,20 @@ async function defaultRunAuthorizeFlow(): Promise<void> {
 // once, shortly after ingest, so cross-restart persistence isn't worth the
 // added invalidation concern (see costco-receipt-importer.md's Phase 3 plan).
 const pageImageCache = new Map<number, Buffer[]>();
+
+const listTransactionsQuerySchema = z.object({
+  importBatchId: z.coerce.number().int().optional(),
+  status: z.enum(['ACTIVE', 'EXCLUDED_REMOVED']).default('ACTIVE'),
+  syncedStatus: z.enum(['UNSYNCED', 'SYNCED', 'ALL']).default('UNSYNCED'),
+  sortBy: z.enum(['date', 'payer', 'description', 'amount', 'splitType', 'syncedAt']).default('date'),
+  sortDir: z.enum(['asc', 'desc']).default('asc'),
+  page: z.coerce.number().int().positive().default(1),
+  pageSize: z.coerce
+    .number()
+    .int()
+    .refine((n) => [10, 25, 50].includes(n), { message: 'pageSize must be 10, 25, or 50' })
+    .default(25),
+});
 
 function parseIntParam(value: string): number {
   const parsed = Number(value);
@@ -235,9 +253,16 @@ export function createApp(deps: AppDeps) {
       return c.json(job);
     })
 
-    .get('/api/transactions', async (c) => {
-      const transactions = await listImportedTransactions(deps.prisma);
-      return c.json(transactions);
+    .get('/api/transactions', zValidator('query', listTransactionsQuerySchema), async (c) => {
+      const result = await listImportedTransactions(deps.prisma, c.req.valid('query'));
+      return c.json(result);
+    })
+
+    .get('/api/import-batches', async (c) => c.json(await listImportBatches(deps.prisma)))
+
+    .patch('/api/import-batches/:id', zValidator('json', updateImportBatchSchema), async (c) => {
+      const batch = await updateImportBatch(deps.prisma, parseIntParam(c.req.param('id')), c.req.valid('json'));
+      return c.json(batch);
     })
 
     // Edits a staged transaction's split type and/or soft-deletes it —

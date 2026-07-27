@@ -4,29 +4,49 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PriorityHighIcon from '@mui/icons-material/PriorityHigh';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UndoIcon from '@mui/icons-material/Undo';
+import EditIcon from '@mui/icons-material/Edit';
 import {
+  Button,
   Chip,
   CircularProgress,
   Container,
-  FormControlLabel,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  FormControl,
   IconButton,
+  InputLabel,
   MenuItem,
   Paper,
   Select,
   Stack,
-  Switch,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
+  TableSortLabel,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
 import { api } from '../lib/api.js';
 
-type TransactionSummary = InferResponseType<typeof api.transactions.$get>[number];
+type TransactionsResponse = InferResponseType<typeof api.transactions.$get, 200>;
+type TransactionSummary = TransactionsResponse['transactions'][number];
+type ImportBatchSummary = InferResponseType<(typeof api)['import-batches']['$get']>[number];
+
+type Status = 'ACTIVE' | 'EXCLUDED_REMOVED';
+type SyncedStatus = 'UNSYNCED' | 'SYNCED' | 'ALL';
+type SortKey = 'date' | 'payer' | 'description' | 'amount' | 'splitType' | 'syncedAt';
+type SortDir = 'asc' | 'desc';
+
+const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
 
 interface TransactionReviewPageProps {
   onSelectReceipt: (receiptId: number) => void;
@@ -64,28 +84,103 @@ function ReceiptStatusCell({ transaction, onSelectReceipt }: { transaction: Tran
   );
 }
 
+const SORTABLE_COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
+  { key: 'date', label: 'Date' },
+  { key: 'payer', label: 'Payer' },
+  { key: 'description', label: 'Description' },
+  { key: 'amount', label: 'Amount', align: 'right' },
+  { key: 'splitType', label: 'Split' },
+  { key: 'syncedAt', label: 'Synced' },
+];
+
 /** Lists staged transactions and, for Variably-split ones, whether a matching receipt exists and has been reviewed/submitted. */
 export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPageProps) {
-  const [transactions, setTransactions] = useState<TransactionSummary[] | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
+  const [batches, setBatches] = useState<ImportBatchSummary[] | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<number | 'ALL' | undefined>(undefined);
+  const [status, setStatus] = useState<Status>('ACTIVE');
+  const [syncedStatus, setSyncedStatus] = useState<SyncedStatus>('UNSYNCED');
+  const [sortBy, setSortBy] = useState<SortKey>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
+  const [result, setResult] = useState<TransactionsResponse | null>(null);
   const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
+  const [editingBatch, setEditingBatch] = useState<{ title: string; description: string } | null>(null);
+  const [savingBatch, setSavingBatch] = useState(false);
+
+  async function loadBatches(): Promise<ImportBatchSummary[]> {
+    const res = await api['import-batches'].$get();
+    const loaded = await res.json();
+    setBatches(loaded);
+    return loaded;
+  }
+
+  useEffect(() => {
+    void (async () => {
+      const loaded = await loadBatches();
+      setSelectedBatchId(loaded.length > 0 ? loaded[0].id : 'ALL');
+    })();
+  }, []);
+
+  const selectedBatch = selectedBatchId !== 'ALL' ? (batches ?? []).find((b) => b.id === selectedBatchId) : undefined;
+
+  async function saveBatchEdit(): Promise<void> {
+    if (!editingBatch || typeof selectedBatchId !== 'number') {
+      return;
+    }
+    setSavingBatch(true);
+    try {
+      await api['import-batches'][':id'].$patch({
+        param: { id: String(selectedBatchId) },
+        json: { title: editingBatch.title, description: editingBatch.description || null },
+      });
+      await loadBatches();
+      setEditingBatch(null);
+    } finally {
+      setSavingBatch(false);
+    }
+  }
 
   async function load(): Promise<void> {
-    const res = await api.transactions.$get();
-    setTransactions(await res.json());
+    if (selectedBatchId === undefined) {
+      return;
+    }
+    const res = await api.transactions.$get({
+      query: {
+        ...(selectedBatchId !== 'ALL' ? { importBatchId: String(selectedBatchId) } : {}),
+        status,
+        syncedStatus,
+        sortBy,
+        sortDir,
+        page: String(page + 1),
+        pageSize: String(pageSize),
+      },
+    });
+    if (res.ok) {
+      setResult(await res.json());
+    }
   }
 
   useEffect(() => {
     void load();
-  }, []);
+  }, [selectedBatchId, status, syncedStatus, sortBy, sortDir, page, pageSize]);
+
+  function handleSort(key: SortKey): void {
+    if (sortBy === key) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      setSortDir('asc');
+    }
+    setPage(0);
+  }
 
   async function patchTransaction(id: number, body: { splitType?: 'Equally' | 'Variably'; removed?: boolean }): Promise<void> {
     setPendingIds((prev) => new Set(prev).add(id));
     try {
       const res = await api.transactions[':id'].$patch({ param: { id: String(id) }, json: body });
       if (res.ok) {
-        const updated = await res.json();
-        setTransactions((prev) => prev?.map((t) => (t.id === id ? updated : t)) ?? null);
+        await load();
       }
     } finally {
       setPendingIds((prev) => {
@@ -96,54 +191,116 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
     }
   }
 
-  const visible = (transactions ?? []).filter((t) => showHidden || (!t.excluded && !t.removed));
+  const transactions = result?.transactions ?? [];
+  const hasAnyBatches = (batches?.length ?? 0) > 0;
 
   return (
     <Container maxWidth="lg" sx={{ py: 6 }}>
       <Stack spacing={3}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
+        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
           <Typography variant="h4">Review transactions</Typography>
-          <FormControlLabel
-            control={<Switch checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />}
-            label="Show excluded/removed"
-          />
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap' }}>
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel id="import-batch-label">Import</InputLabel>
+              <Select
+                labelId="import-batch-label"
+                label="Import"
+                value={selectedBatchId ?? ''}
+                onChange={(e) => {
+                  setSelectedBatchId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
+                  setPage(0);
+                }}
+              >
+                <MenuItem value="ALL">All imports</MenuItem>
+                {(batches ?? []).map((b) => (
+                  <MenuItem key={b.id} value={b.id}>
+                    {b.title}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {selectedBatch ? (
+              <Tooltip title="Edit import title/notes">
+                <IconButton
+                  size="small"
+                  aria-label="Edit import"
+                  onClick={() => setEditingBatch({ title: selectedBatch.title, description: selectedBatch.description ?? '' })}
+                >
+                  <EditIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            ) : null}
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={status}
+              onChange={(_, next: Status | null) => {
+                if (next) {
+                  setStatus(next);
+                  setPage(0);
+                }
+              }}
+            >
+              <ToggleButton value="ACTIVE">Active</ToggleButton>
+              <ToggleButton value="EXCLUDED_REMOVED">Excluded &amp; Removed</ToggleButton>
+            </ToggleButtonGroup>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={syncedStatus}
+              onChange={(_, next: SyncedStatus | null) => {
+                if (next) {
+                  setSyncedStatus(next);
+                  setPage(0);
+                }
+              }}
+            >
+              <ToggleButton value="UNSYNCED">Unsynced</ToggleButton>
+              <ToggleButton value="SYNCED">Synced</ToggleButton>
+              <ToggleButton value="ALL">All</ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
         </Stack>
-        {transactions === null ? (
+        {result === null ? (
           <Typography color="text.secondary">Loading…</Typography>
-        ) : visible.length === 0 ? (
+        ) : !hasAnyBatches ? (
           <Paper sx={{ p: 4 }}>
             <Typography color="text.secondary">No transactions staged yet — import a CSV export to get started.</Typography>
+          </Paper>
+        ) : transactions.length === 0 ? (
+          <Paper sx={{ p: 4 }}>
+            <Typography color="text.secondary">No transactions match the current filters.</Typography>
           </Paper>
         ) : (
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Date</TableCell>
-                  <TableCell>Payer</TableCell>
-                  <TableCell>Description</TableCell>
-                  <TableCell align="right">Amount</TableCell>
-                  <TableCell>Split</TableCell>
+                  {SORTABLE_COLUMNS.map((col) => (
+                    <TableCell key={col.key} align={col.align}>
+                      <TableSortLabel active={sortBy === col.key} direction={sortBy === col.key ? sortDir : 'asc'} onClick={() => handleSort(col.key)}>
+                        {col.label}
+                      </TableSortLabel>
+                    </TableCell>
+                  ))}
                   <TableCell>Receipt</TableCell>
-                  <TableCell>Synced</TableCell>
                   <TableCell align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {visible.map((t) => {
-                  const hidden = t.excluded || t.removed;
+                {transactions.map((t) => {
                   const locked = t.syncedAt !== null;
                   const pending = pendingIds.has(t.id);
                   return (
-                    <TableRow key={t.id} hover sx={hidden ? { opacity: 0.5 } : undefined}>
+                    <TableRow key={t.id} hover>
                       <TableCell>{t.date}</TableCell>
                       <TableCell>{t.payer}</TableCell>
                       <TableCell>{t.description}</TableCell>
                       <TableCell align="right">${t.amount.toFixed(2)}</TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                          {t.excluded ? <Chip label="Excluded" color="default" size="small" /> : null}
-                          {t.removed ? <Chip label="Removed" color="default" size="small" /> : null}
+                          {status === 'EXCLUDED_REMOVED' && t.excluded ? <Chip label="Excluded" color="default" size="small" /> : null}
+                          {status === 'EXCLUDED_REMOVED' && t.removed ? <Chip label="Removed" color="default" size="small" /> : null}
                           {locked ? (
                             t.splitType
                           ) : (
@@ -161,15 +318,6 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                       </TableCell>
                       <TableCell>
                         <ReceiptStatusCell transaction={t} onSelectReceipt={onSelectReceipt} />
-                      </TableCell>
-                      <TableCell>
-                        {t.syncedAt ? (
-                          <Tooltip title={new Date(t.syncedAt).toLocaleString()}>
-                            <CheckCircleIcon color="success" fontSize="small" />
-                          </Tooltip>
-                        ) : (
-                          <Typography color="text.secondary">—</Typography>
-                        )}
                       </TableCell>
                       <TableCell align="right">
                         {pending ? (
@@ -194,9 +342,51 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                 })}
               </TableBody>
             </Table>
+            <TablePagination
+              component="div"
+              count={result.totalCount}
+              page={page}
+              onPageChange={(_, next) => setPage(next)}
+              rowsPerPage={pageSize}
+              rowsPerPageOptions={[...PAGE_SIZE_OPTIONS]}
+              onRowsPerPageChange={(e) => {
+                setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number]);
+                setPage(0);
+              }}
+            />
           </TableContainer>
         )}
       </Stack>
+      <Dialog open={editingBatch !== null} onClose={() => setEditingBatch(null)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit import</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <TextField
+              label="Title"
+              value={editingBatch?.title ?? ''}
+              onChange={(e) => setEditingBatch((prev) => (prev ? { ...prev, title: e.target.value } : prev))}
+              fullWidth
+            />
+            <TextField
+              label="Notes"
+              value={editingBatch?.description ?? ''}
+              onChange={(e) => setEditingBatch((prev) => (prev ? { ...prev, description: e.target.value } : prev))}
+              placeholder="e.g. remember to also pull the July return credit next time"
+              multiline
+              minRows={3}
+              fullWidth
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditingBatch(null)} disabled={savingBatch}>
+            Cancel
+          </Button>
+          <Button onClick={() => void saveBatchEdit()} variant="contained" disabled={savingBatch || !editingBatch?.title.trim()}>
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
 }

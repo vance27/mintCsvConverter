@@ -215,7 +215,9 @@ describe('app', () => {
     const { jobIds } = (await importRes.json()) as { jobIds: string[] };
     expect(jobIds).toHaveLength(1);
 
-    let job: { status: string; result?: { importedCount: number; skippedDuplicateCount: number; excludedCount: number } } | undefined;
+    let job:
+      | { status: string; result?: { importedCount: number; skippedDuplicateCount: number; excludedCount: number; importBatchId: number | null } }
+      | undefined;
     for (let attempt = 0; attempt < 50; attempt++) {
       const res = await app.request(`/api/imports/${jobIds[0]}`);
       job = (await res.json()) as typeof job;
@@ -226,7 +228,11 @@ describe('app', () => {
     }
 
     expect(job?.status).toBe('done');
-    expect(job?.result).toEqual({ importedCount: 3, skippedDuplicateCount: 0, excludedCount: 1 });
+    expect(job?.result?.importedCount).toBe(3);
+    expect(job?.result?.skippedDuplicateCount).toBe(0);
+    expect(job?.result?.excludedCount).toBe(1);
+    expect(typeof job?.result?.importBatchId).toBe('number');
+    const importBatchId = job?.result?.importBatchId as number;
 
     const staged = await prisma.importedTransaction.findMany({ orderBy: { date: 'asc' } });
     expect(staged.map((t) => ({ description: t.description, splitType: t.splitType, excluded: t.excluded }))).toEqual([
@@ -234,6 +240,47 @@ describe('app', () => {
       { description: 'Costco Wholesale', splitType: 'Variably', excluded: false },
       { description: 'CITI CARD PAYMENT', splitType: 'Equally', excluded: true },
     ]);
+    expect(staged.every((t) => t.importBatchId === importBatchId)).toBe(true);
+
+    interface ImportBatchJson {
+      id: number;
+      title: string;
+      description: string | null;
+      payer: string;
+      minDate: string;
+      maxDate: string;
+      sourceFilename: string;
+      csvImportProfileId: number | null;
+      createdAt: string;
+      importedCount: number;
+      skippedDuplicateCount: number;
+      excludedCount: number;
+    }
+
+    const batches = (await (await app.request('/api/import-batches')).json()) as ImportBatchJson[];
+    expect(batches).toHaveLength(1);
+    expect(batches[0].title).toContain('Brian');
+    expect(batches[0]).toMatchObject({
+      id: importBatchId,
+      description: null,
+      payer: 'Brian',
+      minDate: '06/20/2026',
+      maxDate: '06/22/2026',
+      sourceFilename: 'export.csv',
+      csvImportProfileId: await citiProfileId(prisma),
+      importedCount: 3,
+      skippedDuplicateCount: 0,
+      excludedCount: 1,
+    });
+
+    const renamed = await app.request(`/api/import-batches/${batches[0].id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: 'June Citi export', description: 'Remember to pull the July return credit next time' }),
+    });
+    expect(renamed.status).toBe(200);
+    const renamedBody = (await renamed.json()) as ImportBatchJson;
+    expect(renamedBody).toEqual({ ...batches[0], title: 'June Citi export', description: 'Remember to pull the July return credit next time' });
   });
 
   it('previews a Citi-shaped CSV and auto-detects the seeded default profile', async () => {
@@ -323,7 +370,7 @@ describe('app', () => {
       '\n',
     );
 
-    async function importOnce(): Promise<{ importedCount: number; skippedDuplicateCount: number; excludedCount: number }> {
+    async function importOnce(): Promise<{ importedCount: number; skippedDuplicateCount: number; excludedCount: number; importBatchId: number | null }> {
       const formData = new FormData();
       formData.append('files', new Blob([csv]), 'export.csv');
       formData.append('payer', 'Brian');
@@ -331,7 +378,9 @@ describe('app', () => {
       const res = await app.request('/api/imports', { method: 'POST', body: formData });
       const { jobIds } = (await res.json()) as { jobIds: string[] };
 
-      let job: { status: string; result?: { importedCount: number; skippedDuplicateCount: number; excludedCount: number } } | undefined;
+      let job:
+        | { status: string; result?: { importedCount: number; skippedDuplicateCount: number; excludedCount: number; importBatchId: number | null } }
+        | undefined;
       for (let attempt = 0; attempt < 50; attempt++) {
         const jobRes = await app.request(`/api/imports/${jobIds[0]}`);
         job = (await jobRes.json()) as typeof job;
@@ -347,10 +396,20 @@ describe('app', () => {
     }
 
     const first = await importOnce();
-    expect(first).toEqual({ importedCount: 1, skippedDuplicateCount: 0, excludedCount: 0 });
+    expect(first.importedCount).toBe(1);
+    expect(first.skippedDuplicateCount).toBe(0);
+    expect(first.excludedCount).toBe(0);
+    expect(typeof first.importBatchId).toBe('number');
 
     const second = await importOnce();
-    expect(second).toEqual({ importedCount: 0, skippedDuplicateCount: 1, excludedCount: 0 });
+    // Even a fully-duplicate re-import still creates a (data-less-in-effect
+    // but still date-ranged) batch, since candidates.length > 0 — only a
+    // truly empty/header-only CSV skips batch creation.
+    expect(second.importedCount).toBe(0);
+    expect(second.skippedDuplicateCount).toBe(1);
+    expect(second.excludedCount).toBe(0);
+    expect(typeof second.importBatchId).toBe('number');
+    expect(second.importBatchId).not.toBe(first.importBatchId);
 
     expect(await prisma.importedTransaction.count()).toBe(1);
   });
@@ -448,11 +507,16 @@ describe('app', () => {
 
     const res = await app.request('/api/transactions');
     expect(res.status).toBe(200);
-    const transactions = (await res.json()) as {
-      description: string;
-      splitType: string;
-      receiptMatch: { receiptId: number; status: string; aggregate: Record<string, number> } | null;
-    }[];
+    const body = (await res.json()) as {
+      transactions: {
+        description: string;
+        splitType: string;
+        receiptMatch: { receiptId: number; status: string; aggregate: Record<string, number> } | null;
+      }[];
+      totalCount: number;
+    };
+    const { transactions } = body;
+    expect(body.totalCount).toBe(3);
 
     expect(transactions.find((t) => t.description === 'Costco Wholesale')?.receiptMatch).toEqual({
       receiptId: seeded.receiptId,
@@ -463,7 +527,7 @@ describe('app', () => {
     expect(transactions.find((t) => t.description === 'Chipotle')?.receiptMatch).toBeNull();
 
     await prisma.receipt.update({ where: { id: seeded.receiptId }, data: { status: 'SUBMITTED', submittedAt: new Date() } });
-    const afterSubmit = (await (await app.request('/api/transactions')).json()) as typeof transactions;
+    const afterSubmit = ((await (await app.request('/api/transactions')).json()) as typeof body).transactions;
     expect(afterSubmit.find((t) => t.description === 'Costco Wholesale')?.receiptMatch?.status).toBe('SUBMITTED');
   });
 
@@ -492,8 +556,14 @@ describe('app', () => {
     expect(afterRemove.removed).toBe(true);
     expect(afterRemove.removedAt).not.toBeNull();
 
-    const listAfterRemove = (await (await app.request('/api/transactions')).json()) as { id: number; removed: boolean }[];
-    expect(listAfterRemove.find((t) => t.id === transaction.id)?.removed).toBe(true);
+    // The default status filter ('ACTIVE') excludes removed rows — this one
+    // only shows up under the 'EXCLUDED_REMOVED' status.
+    const listAfterRemove = (await (await app.request('/api/transactions?status=EXCLUDED_REMOVED')).json()) as {
+      transactions: { id: number; removed: boolean }[];
+    };
+    expect(listAfterRemove.transactions.find((t) => t.id === transaction.id)?.removed).toBe(true);
+    const listActiveAfterRemove = (await (await app.request('/api/transactions')).json()) as { transactions: { id: number }[] };
+    expect(listActiveAfterRemove.transactions.some((t) => t.id === transaction.id)).toBe(false);
 
     const patchUndo = await app.request(`/api/transactions/${transaction.id}`, {
       method: 'PATCH',
@@ -512,6 +582,115 @@ describe('app', () => {
       body: JSON.stringify({ removed: true }),
     });
     expect(blockedPatch.status).toBe(400);
+  });
+
+  it('filters transactions by synced status and by import batch', async () => {
+    const { app } = setup();
+    const batchA = await prisma.importBatch.create({
+      data: {
+        title: 'Batch A',
+        payer: 'Brian',
+        minDate: '07/01/2026',
+        maxDate: '07/01/2026',
+        sourceFilename: 'a.csv',
+        importedCount: 1,
+        skippedDuplicateCount: 0,
+        excludedCount: 0,
+      },
+    });
+    const batchB = await prisma.importBatch.create({
+      data: {
+        title: 'Batch B',
+        payer: 'Brian',
+        minDate: '07/05/2026',
+        maxDate: '07/05/2026',
+        sourceFilename: 'b.csv',
+        importedCount: 1,
+        skippedDuplicateCount: 0,
+        excludedCount: 0,
+      },
+    });
+    await prisma.importedTransaction.createMany({
+      data: [
+        { payer: 'Brian', date: '07/01/2026', description: 'Unsynced in A', amount: 10, splitType: 'Equally', importBatchId: batchA.id },
+        {
+          payer: 'Brian',
+          date: '07/01/2026',
+          description: 'Synced in A',
+          amount: 20,
+          splitType: 'Equally',
+          importBatchId: batchA.id,
+          syncedAt: new Date(),
+        },
+        { payer: 'Brian', date: '07/05/2026', description: 'Unsynced in B', amount: 30, splitType: 'Equally', importBatchId: batchB.id },
+      ],
+    });
+
+    type Body = { transactions: { description: string }[]; totalCount: number };
+
+    // Default (status=ACTIVE, syncedStatus=UNSYNCED, no batch filter): both unsynced rows, across both batches.
+    const defaultBody = (await (await app.request('/api/transactions')).json()) as Body;
+    expect(defaultBody.transactions.map((t) => t.description).sort()).toEqual(['Unsynced in A', 'Unsynced in B']);
+
+    // Scoping to batch A alone (still default synced filter) shows just its unsynced row.
+    const batchABody = (await (await app.request(`/api/transactions?importBatchId=${batchA.id}`)).json()) as Body;
+    expect(batchABody.transactions.map((t) => t.description)).toEqual(['Unsynced in A']);
+
+    // syncedStatus=SYNCED, scoped to batch A, shows the synced row instead.
+    const syncedBody = (await (await app.request(`/api/transactions?importBatchId=${batchA.id}&syncedStatus=SYNCED`)).json()) as Body;
+    expect(syncedBody.transactions.map((t) => t.description)).toEqual(['Synced in A']);
+
+    // syncedStatus=ALL, scoped to batch A, shows both.
+    const allBody = (await (await app.request(`/api/transactions?importBatchId=${batchA.id}&syncedStatus=ALL`)).json()) as Body;
+    expect(allBody.totalCount).toBe(2);
+  });
+
+  it('sorts and paginates transactions', async () => {
+    const { app } = setup();
+    await prisma.importedTransaction.createMany({
+      data: [
+        { payer: 'Brian', date: '07/01/2026', description: 'Low', amount: 10, splitType: 'Equally' },
+        { payer: 'Brian', date: '07/02/2026', description: 'Mid', amount: 20, splitType: 'Equally' },
+        { payer: 'Brian', date: '07/03/2026', description: 'High', amount: 30, splitType: 'Equally' },
+      ],
+    });
+
+    type Body = { transactions: { description: string; amount: number }[]; totalCount: number };
+
+    const desc = (await (await app.request('/api/transactions?sortBy=amount&sortDir=desc')).json()) as Body;
+    expect(desc.transactions.map((t) => t.description)).toEqual(['High', 'Mid', 'Low']);
+
+    const asc = (await (await app.request('/api/transactions?sortBy=amount&sortDir=asc')).json()) as Body;
+    expect(asc.totalCount).toBe(3);
+    expect(asc.transactions.map((t) => t.description)).toEqual(['Low', 'Mid', 'High']);
+
+    const invalidPageSize = await app.request('/api/transactions?pageSize=7');
+    expect(invalidPageSize.status).toBe(400);
+  });
+
+  it('paginates across pages with a fixed page size', async () => {
+    const { app } = setup();
+    await prisma.importedTransaction.createMany({
+      data: Array.from({ length: 12 }, (_, i) => ({
+        payer: 'Brian',
+        date: `07/${String(i + 1).padStart(2, '0')}/2026`,
+        description: `Row ${String(i + 1).padStart(2, '0')}`,
+        amount: i + 1,
+        splitType: 'Equally' as const,
+      })),
+    });
+
+    type Body = { transactions: { description: string }[]; totalCount: number };
+
+    const page1 = (await (await app.request('/api/transactions?sortBy=date&sortDir=asc&page=1&pageSize=10')).json()) as Body;
+    expect(page1.totalCount).toBe(12);
+    expect(page1.transactions).toHaveLength(10);
+    expect(page1.transactions[0].description).toBe('Row 01');
+
+    const page2 = (await (await app.request('/api/transactions?sortBy=date&sortDir=asc&page=2&pageSize=10')).json()) as Body;
+    expect(page2.totalCount).toBe(12);
+    expect(page2.transactions).toHaveLength(2);
+    expect(page2.transactions.map((t) => t.description)).toEqual(['Row 11', 'Row 12']);
   });
 
   it('never syncs a soft-removed transaction', async () => {

@@ -3,13 +3,14 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ImportFileToLines, type CsvColumnMapping } from '@mint-csv-converter/core';
-import { loadDbBackedFactory } from '@mint-csv-converter/automation';
-import type { PrismaClient } from '@mint-csv-converter/receipts';
+import { loadDbBackedFactory, toIsoDate } from '@mint-csv-converter/automation';
+import { createImportBatch, type PrismaClient } from '@mint-csv-converter/receipts';
 
 export interface ImportResult {
   importedCount: number;
   skippedDuplicateCount: number;
   excludedCount: number;
+  importBatchId: number | null;
 }
 
 export type ImportJobState = { status: 'pending' } | { status: 'done'; result: ImportResult } | { status: 'error'; message: string };
@@ -37,7 +38,7 @@ export class ImportJobs {
     const csvPath = join(dir, filename);
     writeFileSync(csvPath, csvBuffer);
 
-    importCsv(this.deps.prisma, csvPath, options.payer, options.profileId)
+    importCsv(this.deps.prisma, csvPath, filename, options.payer, options.profileId)
       .then((result) => this.jobs.set(jobId, { status: 'done', result }))
       .catch((error: unknown) => {
         this.jobs.set(jobId, { status: 'error', message: error instanceof Error ? error.message : String(error) });
@@ -51,7 +52,7 @@ export class ImportJobs {
   }
 }
 
-async function importCsv(prisma: PrismaClient, csvPath: string, payer: string, profileId: number): Promise<ImportResult> {
+async function importCsv(prisma: PrismaClient, csvPath: string, filename: string, payer: string, profileId: number): Promise<ImportResult> {
   const factory = await loadDbBackedFactory(prisma);
   const profile = await prisma.csvImportProfile.findUniqueOrThrow({ where: { id: profileId } });
   const mapping = JSON.parse(profile.columnMappingJson) as CsvColumnMapping;
@@ -95,11 +96,33 @@ async function importCsv(prisma: PrismaClient, csvPath: string, payer: string, p
     return true;
   });
 
-  if (toInsert.length > 0) {
-    await prisma.importedTransaction.createMany({ data: toInsert });
+  // A data-less batch (empty/header-only CSV) would be meaningless in the
+  // Review Transactions batch picker, so only create one when there's
+  // something to date-range over.
+  let importBatchId: number | null = null;
+  if (candidates.length > 0) {
+    const isoDates = candidates.map((c) => ({ raw: c.date, iso: toIsoDate(c.date) }));
+    const minDate = isoDates.reduce((min, d) => (d.iso < min.iso ? d : min)).raw;
+    const maxDate = isoDates.reduce((max, d) => (d.iso > max.iso ? d : max)).raw;
+    const batch = await createImportBatch(prisma, {
+      title: `${payer} — ${minDate}–${maxDate}`,
+      payer,
+      minDate,
+      maxDate,
+      sourceFilename: filename,
+      csvImportProfileId: profileId,
+      importedCount: toInsert.length,
+      skippedDuplicateCount: candidates.length - toInsert.length,
+      excludedCount,
+    });
+    importBatchId = batch.id;
   }
 
-  return { importedCount: toInsert.length, skippedDuplicateCount: candidates.length - toInsert.length, excludedCount };
+  if (toInsert.length > 0) {
+    await prisma.importedTransaction.createMany({ data: toInsert.map((c) => ({ ...c, importBatchId })) });
+  }
+
+  return { importedCount: toInsert.length, skippedDuplicateCount: candidates.length - toInsert.length, excludedCount, importBatchId };
 }
 
 function transactionKey(date: string, description: string, amount: number): string {
