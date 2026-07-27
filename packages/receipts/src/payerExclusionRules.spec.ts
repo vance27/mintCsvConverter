@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   listPayerExclusionRules,
   createPayerExclusionRule,
+  updatePayerExclusionRule,
   deletePayerExclusionRule,
   loadPersonalExclusionsDict,
 } from './payerExclusionRules.js';
@@ -52,6 +53,19 @@ describe('payerExclusionRules', () => {
 
     const dict = await loadPersonalExclusionsDict(prisma);
     expect(dict.BRIAN).not.toContain('TEMP');
+  });
+
+  it('updates a rule\'s payer and/or pattern, uppercasing payer regardless of input casing', async () => {
+    const prisma = db();
+    const rule = await createPayerExclusionRule(prisma, { payer: 'Brian', pattern: 'OLD PATTERN' });
+
+    const updated = await updatePayerExclusionRule(prisma, rule.id, { payer: 'patrice', pattern: 'NEW PATTERN' });
+    expect(updated.payer).toBe('PATRICE');
+    expect(updated.pattern).toBe('NEW PATTERN');
+
+    const dict = await loadPersonalExclusionsDict(prisma);
+    expect(dict.PATRICE).toContain('NEW PATTERN');
+    expect(dict.BRIAN ?? []).not.toContain('OLD PATTERN');
   });
 
   it('groups every rule by uppercased payer, ready for CsvConverterFactory.personalExclusions', async () => {

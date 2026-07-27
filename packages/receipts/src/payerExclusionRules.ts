@@ -24,6 +24,33 @@ export async function deletePayerExclusionRule(prisma: PrismaClient, id: number)
   await prisma.payerExclusionRule.delete({ where: { id } });
 }
 
+export const updatePayerExclusionRuleSchema = z
+  .object({
+    payer: z.string().min(1).optional(),
+    pattern: z.string().min(1).optional(),
+    note: z.string().optional(),
+  })
+  .refine((v) => v.payer !== undefined || v.pattern !== undefined || v.note !== undefined, {
+    message: 'At least one of payer, pattern, or note must be provided',
+  });
+export type UpdatePayerExclusionRuleInput = z.infer<typeof updatePayerExclusionRuleSchema>;
+
+/** Stores `payer` uppercased, same as createPayerExclusionRule. */
+export function updatePayerExclusionRule(
+  prisma: PrismaClient,
+  id: number,
+  input: UpdatePayerExclusionRuleInput,
+): Promise<PayerExclusionRule> {
+  return prisma.payerExclusionRule.update({
+    where: { id },
+    data: {
+      ...(input.payer !== undefined ? { payer: input.payer.toUpperCase() } : {}),
+      ...(input.pattern !== undefined ? { pattern: input.pattern } : {}),
+      ...(input.note !== undefined ? { note: input.note } : {}),
+    },
+  });
+}
+
 /** Groups every rule by uppercased payer into the exact shape CsvConverterFactory.personalExclusions expects. */
 export async function loadPersonalExclusionsDict(prisma: PrismaClient): Promise<Record<string, string[]>> {
   const rules = await prisma.payerExclusionRule.findMany();

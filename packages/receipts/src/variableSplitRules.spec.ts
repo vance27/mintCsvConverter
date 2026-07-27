@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import {
   listVariableSplitRules,
   createVariableSplitRule,
+  updateVariableSplitRule,
   deleteVariableSplitRule,
   loadVariableSplitPatterns,
 } from './variableSplitRules.js';
@@ -42,6 +43,17 @@ describe('variableSplitRules', () => {
 
     const patterns = await loadVariableSplitPatterns(prisma);
     expect(patterns).not.toContain('TEMP VENDOR');
+  });
+
+  it('updates a pattern by id', async () => {
+    const prisma = db();
+    const rule = await createVariableSplitRule(prisma, { pattern: 'OLD PATTERN' });
+    const updated = await updateVariableSplitRule(prisma, rule.id, { pattern: 'NEW PATTERN' });
+    expect(updated.pattern).toBe('NEW PATTERN');
+
+    const patterns = await loadVariableSplitPatterns(prisma);
+    expect(patterns).toContain('NEW PATTERN');
+    expect(patterns).not.toContain('OLD PATTERN');
   });
 
   it('loads patterns ready to assign to CsvConverterFactory.splitRulesDict.VARIABLE', async () => {

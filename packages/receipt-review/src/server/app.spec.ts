@@ -389,6 +389,15 @@ describe('app', () => {
     }
     expect(job?.result).toMatchObject({ excludedCount: 1 });
 
+    const patchRes = await app.request(`/api/exclusion-rules/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payer: 'patrice', pattern: 'UPDATED VENDOR' }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as { id: number; payer: string; pattern: string };
+    expect(patched).toMatchObject({ id: created.id, payer: 'PATRICE', pattern: 'UPDATED VENDOR' });
+
     const deleteRes = await app.request(`/api/exclusion-rules/${created.id}`, { method: 'DELETE' });
     expect(deleteRes.status).toBe(200);
     const afterDelete = (await (await app.request('/api/exclusion-rules')).json()) as { id: number }[];
@@ -409,6 +418,15 @@ describe('app', () => {
     expect(createRes.status).toBe(200);
     const created = (await createRes.json()) as { id: number; pattern: string };
     expect(created.pattern).toBe('Whole Foods');
+
+    const patchRes = await app.request(`/api/variable-split-rules/${created.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pattern: 'Trader Joe\'s' }),
+    });
+    expect(patchRes.status).toBe(200);
+    const patched = (await patchRes.json()) as { id: number; pattern: string };
+    expect(patched).toMatchObject({ id: created.id, pattern: 'Trader Joe\'s' });
 
     const deleteRes = await app.request(`/api/variable-split-rules/${created.id}`, { method: 'DELETE' });
     expect(deleteRes.status).toBe(200);

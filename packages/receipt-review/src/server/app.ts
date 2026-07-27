@@ -15,12 +15,16 @@ import {
   renderPdfPages,
   listPayerExclusionRules,
   createPayerExclusionRule,
+  updatePayerExclusionRule,
   deletePayerExclusionRule,
   createPayerExclusionRuleSchema,
+  updatePayerExclusionRuleSchema,
   listVariableSplitRules,
   createVariableSplitRule,
+  updateVariableSplitRule,
   deleteVariableSplitRule,
   createVariableSplitRuleSchema,
+  updateVariableSplitRuleSchema,
   listCsvImportProfiles,
   createCsvImportProfile,
   deleteCsvImportProfile,
@@ -265,6 +269,11 @@ export function createApp(deps: AppDeps) {
       return c.json(rule);
     })
 
+    .patch('/api/exclusion-rules/:id', zValidator('json', updatePayerExclusionRuleSchema), async (c) => {
+      const rule = await updatePayerExclusionRule(deps.prisma, parseIntParam(c.req.param('id')), c.req.valid('json'));
+      return c.json(rule);
+    })
+
     .delete('/api/exclusion-rules/:id', async (c) => {
       await deletePayerExclusionRule(deps.prisma, parseIntParam(c.req.param('id')));
       return c.json({ ok: true });
@@ -274,6 +283,11 @@ export function createApp(deps: AppDeps) {
 
     .post('/api/variable-split-rules', zValidator('json', createVariableSplitRuleSchema), async (c) => {
       const rule = await createVariableSplitRule(deps.prisma, c.req.valid('json'));
+      return c.json(rule);
+    })
+
+    .patch('/api/variable-split-rules/:id', zValidator('json', updateVariableSplitRuleSchema), async (c) => {
+      const rule = await updateVariableSplitRule(deps.prisma, parseIntParam(c.req.param('id')), c.req.valid('json'));
       return c.json(rule);
     })
 

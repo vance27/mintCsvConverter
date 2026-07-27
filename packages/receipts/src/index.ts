@@ -25,18 +25,24 @@ export { seedParticipants } from './seed.js';
 export {
   listPayerExclusionRules,
   createPayerExclusionRule,
+  updatePayerExclusionRule,
   deletePayerExclusionRule,
   loadPersonalExclusionsDict,
   createPayerExclusionRuleSchema,
+  updatePayerExclusionRuleSchema,
   type CreatePayerExclusionRuleInput,
+  type UpdatePayerExclusionRuleInput,
 } from './payerExclusionRules.js';
 export {
   listVariableSplitRules,
   createVariableSplitRule,
+  updateVariableSplitRule,
   deleteVariableSplitRule,
   loadVariableSplitPatterns,
   createVariableSplitRuleSchema,
+  updateVariableSplitRuleSchema,
   type CreateVariableSplitRuleInput,
+  type UpdateVariableSplitRuleInput,
 } from './variableSplitRules.js';
 export {
   listCsvImportProfiles,
