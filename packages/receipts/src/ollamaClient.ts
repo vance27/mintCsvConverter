@@ -3,14 +3,29 @@ import { Ollama } from 'ollama';
 /** Narrow, single-signature shape of the one Ollama call this package uses — same
  * testability pattern as SheetsClient's SpreadsheetsClient/ScriptClient interfaces
  * in packages/automation: real Ollama instances satisfy this narrower type, and
- * specs can pass a plain fake instead of a real chat overload set. */
+ * specs can pass a plain fake instead of a real chat overload set.
+ *
+ * The optional `signal` lets a caller (UploadQueue's cancel) abort an
+ * in-flight extraction. The `ollama` npm client only exposes real
+ * cancellation for its streaming API (its non-streaming `chat()` never
+ * constructs an AbortController at all — confirmed by reading its source),
+ * so `createOllamaClient` below always requests `stream: true` under the
+ * hood and reassembles the chunks itself, purely to get an abortable
+ * request; callers of this interface still see one plain non-streaming
+ * response, same as before. */
 export interface VisionChatClient {
-  chat(request: {
-    model: string;
-    messages: { role: string; content: string; images?: string[] }[];
-    format?: object;
-  }): Promise<{ message: { content: string } }>;
+  chat(
+    request: {
+      model: string;
+      messages: { role: string; content: string; images?: string[] }[];
+      format?: object;
+    },
+    signal?: AbortSignal,
+  ): Promise<{ message: { content: string } }>;
 }
+
+/** How often to log a "still working" heartbeat while chunks are streaming in — real progress, not just a stall guess. */
+const PROGRESS_LOG_INTERVAL_MS = 15_000;
 
 /**
  * Model used for receipt extraction — swappable via OLLAMA_MODEL.
@@ -43,5 +58,34 @@ export function defaultOllamaModel(env: NodeJS.ProcessEnv = process.env): string
 
 /** Builds a real client against a local Ollama server (default http://localhost:11434). */
 export function createOllamaClient(env: NodeJS.ProcessEnv = process.env): VisionChatClient {
-  return new Ollama({ host: env.OLLAMA_HOST });
+  const ollama = new Ollama({ host: env.OLLAMA_HOST });
+  return {
+    async chat(request, signal) {
+      signal?.throwIfAborted();
+      const stream = await ollama.chat({ ...request, stream: true });
+      // signal may have fired while the line above was awaiting the
+      // connection to even open, before there was a stream to abort — catch
+      // that race here rather than only reacting to a later 'abort' event.
+      if (signal?.aborted) {
+        stream.abort();
+      }
+      const onAbort = () => stream.abort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+      try {
+        let content = '';
+        let lastLogAt = Date.now();
+        for await (const chunk of stream) {
+          content += chunk.message.content;
+          const now = Date.now();
+          if (now - lastLogAt >= PROGRESS_LOG_INTERVAL_MS) {
+            console.log(`[ollama] still streaming — ${content.length} chars received so far`);
+            lastLogAt = now;
+          }
+        }
+        return { message: { content } };
+      } finally {
+        signal?.removeEventListener('abort', onAbort);
+      }
+    },
+  };
 }

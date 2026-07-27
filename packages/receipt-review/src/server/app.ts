@@ -215,6 +215,15 @@ export function createApp(deps: AppDeps) {
       return c.json({ ok: true });
     })
 
+    // Stops a QUEUED or EXTRACTING receipt. If it's the one currently being
+    // extracted, this aborts the live Ollama request (not just a UI-level
+    // status flip) — see UploadQueue.cancel.
+    .post('/api/receipts/:id/cancel', async (c) => {
+      const id = parseIntParam(c.req.param('id'));
+      await uploadQueue.cancel(id);
+      return c.json({ ok: true });
+    })
+
     // Parses a raw CSV (no commitment) and tries to auto-detect a saved
     // CsvImportProfile — the configurator UI's first step. Synchronous:
     // this is just CSV parsing, not the slow VLM work /api/uploads kicks

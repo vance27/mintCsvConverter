@@ -273,6 +273,148 @@ describe('app', () => {
     await app.uploadQueue.waitUntilIdle();
   });
 
+  type ReceiptDetailStatusJson = ReceiptStatusJson & { extractionError: string | null };
+
+  /** Polls /api/receipts until one of the given ids reports EXTRACTING — used where two receipts are uploaded together and only one at a time actually runs. */
+  async function pollExtractingId(app: ReturnType<typeof createApp>, ids: number[]): Promise<number> {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const receipts = (await (await app.request('/api/receipts')).json()) as ReceiptStatusJson[];
+      const extracting = receipts.find((r) => ids.includes(r.id) && r.status === 'EXTRACTING');
+      if (extracting) {
+        return extracting.id;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    throw new Error('no receipt started extracting in time');
+  }
+
+  it('cancels a still-QUEUED receipt immediately, without disturbing the one currently extracting', async () => {
+    ({ prisma, cleanup } = createTestDb());
+    dir = mkdtempSync(join(tmpdir(), 'app-test-'));
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    // Both files in this test upload to the same never-before-seen store
+    // concurrently (via Promise.all in POST /api/uploads); pre-creating it
+    // sidesteps a separate, pre-existing race in findOrCreateStore (two
+    // concurrent first-ever uploads for a brand-new store name can both
+    // find it missing and both try to create() it) that isn't what this
+    // test is about.
+    await prisma.store.create({ data: { name: 'Costco' } });
+
+    const receiptJson = {
+      store: 'Costco',
+      purchaseDate: '2026-07-24',
+      subtotal: 10,
+      tax: 0,
+      total: 10,
+      items: [{ itemCode: '999', rawName: 'TEST ITEM', quantity: 1, unitPrice: 10, lineTotal: 10, taxable: false, discountAmount: 0 }],
+    };
+    let releaseFirst!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    let calls = 0;
+    const client: VisionChatClient = {
+      chat: vi.fn(async () => {
+        calls++;
+        if (calls === 1) {
+          await gate;
+        }
+        return { message: { content: JSON.stringify(receiptJson) } };
+      }),
+    };
+    const app = createApp({ prisma, client, receiptsBaseDir: join(dir, 'retained') });
+
+    const formData = new FormData();
+    formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'a.pdf'))]), 'a.pdf');
+    formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'b.pdf', 210))]), 'b.pdf');
+    formData.append('store', 'Costco');
+    formData.append('payer', 'Brian');
+    const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
+    const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
+    expect(receiptIds).toHaveLength(2);
+
+    const extractingId = await pollExtractingId(app, receiptIds);
+    const queuedId = receiptIds.find((id) => id !== extractingId)!;
+
+    const cancelRes = await app.request(`/api/receipts/${queuedId}/cancel`, { method: 'POST' });
+    expect(cancelRes.status).toBe(200);
+
+    const afterCancel = (await (await app.request('/api/receipts')).json()) as ReceiptDetailStatusJson[];
+    const cancelled = afterCancel.find((r) => r.id === queuedId);
+    expect(cancelled?.status).toBe('FAILED');
+    expect(cancelled?.extractionError).toBe('Cancelled by user');
+    // The one actually extracting is untouched by the other's cancellation.
+    expect(afterCancel.find((r) => r.id === extractingId)?.status).toBe('EXTRACTING');
+
+    releaseFirst();
+    const finished = await pollReceiptStatus(app, extractingId, 'EXTRACTED');
+    expect(finished.status).toBe('EXTRACTED');
+    await app.uploadQueue.waitUntilIdle();
+  });
+
+  it('cancels the receipt currently extracting by aborting its live request, and the queue moves on to the next item', async () => {
+    ({ prisma, cleanup } = createTestDb());
+    dir = mkdtempSync(join(tmpdir(), 'app-test-'));
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    // Both files in this test upload to the same never-before-seen store
+    // concurrently (via Promise.all in POST /api/uploads); pre-creating it
+    // sidesteps a separate, pre-existing race in findOrCreateStore (two
+    // concurrent first-ever uploads for a brand-new store name can both
+    // find it missing and both try to create() it) that isn't what this
+    // test is about.
+    await prisma.store.create({ data: { name: 'Costco' } });
+
+    const receiptJson = {
+      store: 'Costco',
+      purchaseDate: '2026-07-24',
+      subtotal: 5,
+      tax: 0,
+      total: 5,
+      items: [{ itemCode: '1', rawName: 'ITEM', quantity: 1, unitPrice: 5, lineTotal: 5, taxable: false, discountAmount: 0 }],
+    };
+    let calls = 0;
+    const client: VisionChatClient = {
+      chat: vi.fn<VisionChatClient['chat']>((_request, signal) => {
+        calls++;
+        if (calls === 1) {
+          // Never resolves on its own — mirrors a real in-flight VLM call
+          // that only ever settles via the abort signal, so this test
+          // proves cancel() genuinely tears down the live request rather
+          // than just relabeling the DB row while it keeps running.
+          return new Promise<{ message: { content: string } }>((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(new Error('The operation was aborted')), { once: true });
+          });
+        }
+        return Promise.resolve({ message: { content: JSON.stringify(receiptJson) } });
+      }),
+    };
+    const app = createApp({ prisma, client, receiptsBaseDir: join(dir, 'retained') });
+
+    const formData = new FormData();
+    formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'a.pdf'))]), 'a.pdf');
+    formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'b.pdf', 210))]), 'b.pdf');
+    formData.append('store', 'Costco');
+    formData.append('payer', 'Brian');
+    const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
+    const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
+
+    const extractingId = await pollExtractingId(app, receiptIds);
+    const otherId = receiptIds.find((id) => id !== extractingId)!;
+
+    const cancelRes = await app.request(`/api/receipts/${extractingId}/cancel`, { method: 'POST' });
+    expect(cancelRes.status).toBe(200);
+
+    const cancelled = await pollReceiptStatus(app, extractingId, 'FAILED');
+    expect(cancelled.status).toBe('FAILED');
+    const detail = (await (await app.request('/api/receipts')).json()) as ReceiptDetailStatusJson[];
+    expect(detail.find((r) => r.id === extractingId)?.extractionError).toBe('Cancelled by user');
+
+    // A cancel isn't a real failure — the queue should still move on to the other item rather than tripping the circuit breaker.
+    const other = await pollReceiptStatus(app, otherId, 'EXTRACTED');
+    expect(other.status).toBe('EXTRACTED');
+    await app.uploadQueue.waitUntilIdle();
+  });
+
   it('imports a CSV export, staging transactions without touching Sheets', async () => {
     const { app } = setup();
     const csv = [

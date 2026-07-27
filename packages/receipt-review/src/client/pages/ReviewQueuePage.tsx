@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { InferResponseType } from 'hono/client';
+import CancelIcon from '@mui/icons-material/Cancel';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PriorityHighIcon from '@mui/icons-material/PriorityHigh';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -60,6 +61,7 @@ function ReviewIndicator({ status }: { status: ReceiptSummary['status'] }) {
 export function ReviewQueuePage({ onUpload, onSelect }: ReviewQueuePageProps) {
   const [receipts, setReceipts] = useState<ReceiptSummary[] | null>(null);
   const [retrying, setRetrying] = useState<Set<number>>(new Set());
+  const [cancelling, setCancelling] = useState<Set<number>>(new Set());
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mounted = useRef(true);
 
@@ -96,6 +98,18 @@ export function ReviewQueuePage({ onUpload, onSelect }: ReviewQueuePageProps) {
     await api.receipts[':id'].retry.$post({ param: { id: String(receiptId) } });
     await refresh();
     setRetrying((prev) => {
+      const next = new Set(prev);
+      next.delete(receiptId);
+      return next;
+    });
+  }
+
+  /** Stops a QUEUED or EXTRACTING receipt — if it's the one actively extracting, this aborts the live request, not just relabels it. */
+  async function handleCancel(receiptId: number): Promise<void> {
+    setCancelling((prev) => new Set(prev).add(receiptId));
+    await api.receipts[':id'].cancel.$post({ param: { id: String(receiptId) } });
+    await refresh();
+    setCancelling((prev) => {
       const next = new Set(prev);
       next.delete(receiptId);
       return next;
@@ -148,11 +162,47 @@ export function ReviewQueuePage({ onUpload, onSelect }: ReviewQueuePageProps) {
                       </TableCell>
                       {receipt.status === 'QUEUED' ? (
                         <TableCell colSpan={7}>
-                          {receipt.originalFilename ?? 'Receipt'} — queued
-                          {receipt.queuePosition ? ` (#${receipt.queuePosition} in line)` : ''}
+                          <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                            <Typography variant="body2">
+                              {receipt.originalFilename ?? 'Receipt'} — queued
+                              {receipt.queuePosition ? ` (#${receipt.queuePosition} in line)` : ''}
+                            </Typography>
+                            <Tooltip title="Cancel">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={cancelling.has(receipt.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleCancel(receipt.id);
+                                  }}
+                                >
+                                  <CancelIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
                         </TableCell>
                       ) : receipt.status === 'EXTRACTING' ? (
-                        <TableCell colSpan={7}>{receipt.originalFilename ?? 'Receipt'} — extracting…</TableCell>
+                        <TableCell colSpan={7}>
+                          <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                            <Typography variant="body2">{receipt.originalFilename ?? 'Receipt'} — extracting…</Typography>
+                            <Tooltip title="Cancel">
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  disabled={cancelling.has(receipt.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleCancel(receipt.id);
+                                  }}
+                                >
+                                  <CancelIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Stack>
+                        </TableCell>
                       ) : receipt.status === 'FAILED' ? (
                         <TableCell colSpan={7}>
                           <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>

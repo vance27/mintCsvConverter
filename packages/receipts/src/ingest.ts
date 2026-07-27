@@ -101,7 +101,11 @@ export async function queueReceiptForIngest(
  * up) is not an error here — that still lands on EXTRACTED with
  * reconciled: false, exactly as before this split existed.
  */
-export async function runIngestExtraction(receiptId: number, deps: IngestDeps, options: { model?: string } = {}): Promise<IngestResult> {
+export async function runIngestExtraction(
+  receiptId: number,
+  deps: IngestDeps,
+  options: { model?: string; signal?: AbortSignal } = {},
+): Promise<IngestResult> {
   const { prisma, client } = deps;
   try {
     const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId }, include: { store: true } });
@@ -111,7 +115,11 @@ export async function runIngestExtraction(receiptId: number, deps: IngestDeps, o
       receipt: extracted,
       reconcile: reconcileResult,
       attempts,
-    } = await extractReconciledReceipt(receipt.sourcePath, client, { store: receipt.store.name, model: options.model });
+    } = await extractReconciledReceipt(receipt.sourcePath, client, {
+      store: receipt.store.name,
+      model: options.model,
+      signal: options.signal,
+    });
 
     const activeParticipants = await prisma.participant.findMany({ where: { active: true }, orderBy: { id: 'asc' } });
     if (activeParticipants.length === 0) {

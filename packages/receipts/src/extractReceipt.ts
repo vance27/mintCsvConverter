@@ -86,6 +86,8 @@ export function buildExtractionPrompt(store: string | undefined): string {
 export interface ExtractReceiptOptions {
   store?: string;
   model?: string;
+  /** Aborts the in-flight VLM call — see UploadQueue.cancel in packages/receipt-review. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -102,11 +104,14 @@ export async function extractReceipt(
   const pages = await renderPdfPages(pdfPath);
   const images = pages.map((page) => page.toString('base64'));
 
-  const response = await client.chat({
-    model: options.model ?? defaultOllamaModel(),
-    messages: [{ role: 'user', content: buildExtractionPrompt(options.store), images }],
-    format: RECEIPT_JSON_SCHEMA,
-  });
+  const response = await client.chat(
+    {
+      model: options.model ?? defaultOllamaModel(),
+      messages: [{ role: 'user', content: buildExtractionPrompt(options.store), images }],
+      format: RECEIPT_JSON_SCHEMA,
+    },
+    options.signal,
+  );
 
   let parsedJson: unknown;
   try {
