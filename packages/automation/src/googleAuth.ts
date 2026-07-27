@@ -38,3 +38,8 @@ export function saveCredentials(credentials: Credentials, tokenPath: string = de
   mkdirSync(dirname(tokenPath), { recursive: true });
   writeFileSync(tokenPath, JSON.stringify(credentials, null, 2) + '\n', 'utf-8');
 }
+
+/** Whether a saved OAuth token exists — doesn't validate it's still accepted by Google, just present on disk. */
+export function hasSavedCredentials(tokenPath: string = defaultTokenPath()): boolean {
+  return existsSync(tokenPath);
+}
