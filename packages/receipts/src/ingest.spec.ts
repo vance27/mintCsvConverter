@@ -11,15 +11,6 @@ function fakeClient(content: unknown): VisionChatClient {
   return { chat: vi.fn(async () => ({ message: { content: JSON.stringify(content) } })) };
 }
 
-/** A client that returns a different response on each successive call — for exercising extractReconciledReceipt's retry loop. */
-function fakeClientSequence(...contents: unknown[]): VisionChatClient & { chat: ReturnType<typeof vi.fn> } {
-  const chat = vi.fn();
-  for (const content of contents) {
-    chat.mockImplementationOnce(async () => ({ message: { content: JSON.stringify(content) } }));
-  }
-  return { chat };
-}
-
 /** Writes a minimal, distinct-content receipt PDF (varying width keeps the sha256 unique per test scenario). */
 function writeFixturePdf(dir: string, name: string, width = 200): string {
   const path = join(dir, name);
@@ -127,8 +118,8 @@ describe('ingestReceipt', () => {
 
     expect(result.skipped).toBe(false);
     expect(result.reconciled).toBe(false);
-    expect(result.attempts).toBe(3);
-    expect(deps.client.chat).toHaveBeenCalledTimes(3);
+    expect(result.attempts).toBe(1);
+    expect(deps.client.chat).toHaveBeenCalledTimes(1);
     await expect(prisma.receipt.count()).resolves.toBe(1);
   });
 
@@ -155,21 +146,6 @@ describe('ingestReceipt', () => {
     await expect(prisma.item.count()).resolves.toBe(1);
     const lineItem = await prisma.lineItem.findFirstOrThrow({ where: { receiptId: result.receiptId } });
     expect(lineItem.itemId).toBe(existingItem.id);
-  });
-
-  it('retries extraction after an unreconciled attempt and persists the reconciled retry', async () => {
-    const { prisma, workDir } = setup();
-    await seedParticipants(prisma, ['Brian', 'Patrice']);
-    const pdfPath = writeFixturePdf(workDir, 'r4b.pdf');
-    const badJson = { ...RECEIPT_JSON, total: 999 };
-    const client = fakeClientSequence(badJson, RECEIPT_JSON);
-    const deps: IngestDeps = { prisma, client, receiptsBaseDir: join(workDir, 'store') };
-
-    const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
-
-    expect(result.reconciled).toBe(true);
-    expect(result.attempts).toBe(2);
-    expect(client.chat).toHaveBeenCalledTimes(2);
   });
 
   it('persists a tender breakdown and uses only the card portion for cardAmount when a purchase is split across tender types', async () => {

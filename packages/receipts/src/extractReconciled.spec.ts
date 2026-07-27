@@ -39,9 +39,18 @@ describe('extractReconciledReceipt', () => {
     expect(client.chat).toHaveBeenCalledTimes(1);
   });
 
-  it('retries after an unreconciled attempt and returns the reconciled retry', async () => {
+  it('does not retry by default — an unreconciled first attempt is returned as-is', async () => {
     const client = fakeClientReturning(UNRECONCILED_JSON, RECONCILED_JSON);
     const result = await extractReconciledReceipt(FIXTURE, client);
+
+    expect(result.attempts).toBe(1);
+    expect(result.reconcile.reconciled).toBe(false);
+    expect(client.chat).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries after an unreconciled attempt and returns the reconciled retry when a higher maxAttempts is explicitly requested', async () => {
+    const client = fakeClientReturning(UNRECONCILED_JSON, RECONCILED_JSON);
+    const result = await extractReconciledReceipt(FIXTURE, client, {}, 2);
 
     expect(result.attempts).toBe(2);
     expect(result.reconcile.reconciled).toBe(true);
