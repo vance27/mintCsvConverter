@@ -70,6 +70,8 @@ export {
   createImportBatch,
   updateImportBatch,
   updateImportBatchSchema,
+  deleteImportBatch,
+  ImportBatchHasSyncedTransactionsError,
   type ImportBatchView,
   type CreateImportBatchInput,
   type UpdateImportBatchInput,

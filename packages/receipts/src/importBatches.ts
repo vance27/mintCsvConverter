@@ -91,3 +91,34 @@ export async function updateImportBatch(prisma: PrismaClient, id: number, input:
   });
   return toView(row);
 }
+
+export class ImportBatchHasSyncedTransactionsError extends Error {
+  constructor(
+    public readonly syncedCount: number,
+    public readonly totalCount: number,
+  ) {
+    super(`Cannot delete: ${syncedCount} of ${totalCount} transactions already synced`);
+  }
+}
+
+/**
+ * Deletes an import batch and all its staged transactions — but only if
+ * none of them have synced yet. ImportedTransaction.importBatchId is a
+ * nullable FK with an ON DELETE SET NULL default, so a plain
+ * prisma.importBatch.delete() would silently orphan its transactions
+ * (leaving them under "All imports") rather than remove them; deleting the
+ * transactions explicitly first is what makes this a real bulk delete.
+ */
+export async function deleteImportBatch(prisma: PrismaClient, id: number): Promise<void> {
+  const [totalCount, syncedCount] = await Promise.all([
+    prisma.importedTransaction.count({ where: { importBatchId: id } }),
+    prisma.importedTransaction.count({ where: { importBatchId: id, syncedAt: { not: null } } }),
+  ]);
+  if (syncedCount > 0) {
+    throw new ImportBatchHasSyncedTransactionsError(syncedCount, totalCount);
+  }
+  await prisma.$transaction([
+    prisma.importedTransaction.deleteMany({ where: { importBatchId: id } }),
+    prisma.importBatch.delete({ where: { id } }),
+  ]);
+}
