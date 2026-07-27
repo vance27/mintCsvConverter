@@ -8,9 +8,6 @@
       "path": "./packages/automation"
     },
     {
-      "path": "./packages/receipt-manifest"
-    },
-    {
       "path": "./packages/receipts"
     }
   ]

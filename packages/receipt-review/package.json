@@ -13,7 +13,6 @@
     "@hono/zod-validator": "0.9.0",
     "@mint-csv-converter/automation": "workspace:*",
     "@mint-csv-converter/core": "workspace:*",
-    "@mint-csv-converter/receipt-manifest": "workspace:*",
     "@mint-csv-converter/receipts": "workspace:*",
     "@mui/icons-material": "9.2.0",
     "@mui/material": "9.2.0",

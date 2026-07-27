@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ManifestEntry } from '@mint-csv-converter/receipt-manifest';
+import type { ManifestEntry } from '@mint-csv-converter/receipts';
 import { matchManifestEntry } from './manifestMatch.js';
 
 function entry(overrides: Partial<ManifestEntry> = {}): ManifestEntry {

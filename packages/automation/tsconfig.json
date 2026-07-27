@@ -8,5 +8,5 @@
   },
   "include": ["src"],
   "exclude": ["src/**/*.spec.ts"],
-  "references": [{ "path": "../core" }, { "path": "../receipt-manifest" }, { "path": "../receipts" }]
+  "references": [{ "path": "../core" }, { "path": "../receipts" }]
 }

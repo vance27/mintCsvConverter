@@ -19,12 +19,12 @@ export default defineConfig(
   ...tseslint.configs.recommended,
   {
     // Enforces the package layout documented in CLAUDE.md's "Dependency
-    // map": core/receipt-manifest/receipts/apps-script are foundational
-    // leaves usable in total isolation, automation only builds on those
-    // leaves, and receipt-review (the one integrator) can depend on
-    // anything. Each project's `scope:*` tag lives in its project.json.
-    // Doesn't need type info, so it runs over every source file, not just
-    // the per-package type-checked blocks below.
+    // map": core/receipts/apps-script are foundational leaves usable in
+    // total isolation, automation only builds on those leaves, and
+    // receipt-review (the one integrator) can depend on anything. Each
+    // project's `scope:*` tag lives in its project.json. Doesn't need type
+    // info, so it runs over every source file, not just the per-package
+    // type-checked blocks below.
     files: ['**/*.{ts,tsx}'],
     plugins: { '@nx': nxEslintPlugin },
     rules: {
@@ -34,13 +34,12 @@ export default defineConfig(
           enforceBuildableLibDependency: true,
           depConstraints: [
             { sourceTag: 'scope:csv', onlyDependOnLibsWithTags: [] },
-            { sourceTag: 'scope:manifest', onlyDependOnLibsWithTags: [] },
             { sourceTag: 'scope:receipts', onlyDependOnLibsWithTags: [] },
             { sourceTag: 'scope:apps-script', onlyDependOnLibsWithTags: [] },
-            { sourceTag: 'scope:sheets', onlyDependOnLibsWithTags: ['scope:csv', 'scope:manifest', 'scope:receipts'] },
+            { sourceTag: 'scope:sheets', onlyDependOnLibsWithTags: ['scope:csv', 'scope:receipts'] },
             {
               sourceTag: 'scope:review-ui',
-              onlyDependOnLibsWithTags: ['scope:csv', 'scope:manifest', 'scope:receipts', 'scope:sheets'],
+              onlyDependOnLibsWithTags: ['scope:csv', 'scope:receipts', 'scope:sheets'],
             },
           ],
         },

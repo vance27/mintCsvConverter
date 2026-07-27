@@ -116,9 +116,6 @@ importers:
       '@mint-csv-converter/core':
         specifier: workspace:*
         version: link:../core
-      '@mint-csv-converter/receipt-manifest':
-        specifier: workspace:*
-        version: link:../receipt-manifest
       '@mint-csv-converter/receipts':
         specifier: workspace:*
         version: link:../receipts
@@ -134,8 +131,6 @@ importers:
       csv-stringify:
         specifier: 6.8.1
         version: 6.8.1
-
-  packages/receipt-manifest: {}
 
   packages/receipt-review:
     dependencies:
@@ -157,9 +152,6 @@ importers:
       '@mint-csv-converter/core':
         specifier: workspace:*
         version: link:../core
-      '@mint-csv-converter/receipt-manifest':
-        specifier: workspace:*
-        version: link:../receipt-manifest
       '@mint-csv-converter/receipts':
         specifier: workspace:*
         version: link:../receipts
