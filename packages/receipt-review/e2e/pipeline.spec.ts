@@ -37,6 +37,11 @@ test.describe('receipt-review pipeline', () => {
     await expect(page.getByText('Nothing to sync')).toBeVisible();
     await expect(page.getByText('No syncs run yet.')).toBeVisible();
 
+    // No SPREADSHEET_ID in the e2e env (deliberately — this suite never
+    // touches real Sheets), so the embed shows its "not configured" state.
+    await page.getByRole('tab', { name: 'Sheet' }).click();
+    await expect(page.getByText(/SPREADSHEET_ID isn't configured/)).toBeVisible();
+
     expect(errors).toEqual([]);
   });
 

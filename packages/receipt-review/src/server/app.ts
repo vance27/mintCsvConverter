@@ -91,6 +91,11 @@ export function createApp(deps: AppDeps) {
   const app = new Hono()
     .get('/api/health', (c) => c.json({ ok: true }))
 
+    // Exposes just enough server-side config for the client to build the
+    // Google Sheet embed's iframe src (SheetEmbedPage) — same SPREADSHEET_ID
+    // env var automation's SheetsClient already reads.
+    .get('/api/config', (c) => c.json({ spreadsheetId: process.env.SPREADSHEET_ID || null }))
+
     .get('/api/receipts', async (c) => {
       const receipts = await listReceipts(deps.prisma);
       return c.json(receipts);

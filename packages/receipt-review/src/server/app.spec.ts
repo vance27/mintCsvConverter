@@ -56,6 +56,32 @@ describe('app', () => {
     expect(await res.json()).toEqual({ ok: true });
   });
 
+  it('reports the configured SPREADSHEET_ID, or null when unset, for the Sheet embed', async () => {
+    const { app } = setup();
+    const originalValue = process.env.SPREADSHEET_ID;
+    try {
+      delete process.env.SPREADSHEET_ID;
+      const unsetRes = await app.request('/api/config');
+      expect(await unsetRes.json()).toEqual({ spreadsheetId: null });
+
+      // Also treated as unset — the e2e suite blanks this rather than
+      // deleting it, to override whatever Nx's automatic .env loading put there.
+      process.env.SPREADSHEET_ID = '';
+      const blankRes = await app.request('/api/config');
+      expect(await blankRes.json()).toEqual({ spreadsheetId: null });
+
+      process.env.SPREADSHEET_ID = 'test-spreadsheet-id';
+      const setRes = await app.request('/api/config');
+      expect(await setRes.json()).toEqual({ spreadsheetId: 'test-spreadsheet-id' });
+    } finally {
+      if (originalValue === undefined) {
+        delete process.env.SPREADSHEET_ID;
+      } else {
+        process.env.SPREADSHEET_ID = originalValue;
+      }
+    }
+  });
+
   it('lists receipts needing review', async () => {
     const { app } = setup();
     const seeded = await seedBasicReceipt(prisma);

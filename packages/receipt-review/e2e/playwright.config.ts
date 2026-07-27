@@ -28,10 +28,14 @@ export default defineConfig({
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: false,
     timeout: 120_000,
-    // No GOOGLE_OAUTH_*/SPREADSHEET_ID here, deliberately — the suite never
-    // clicks "Run sync" or "Reauthorize" (those stay covered by app.spec.ts's
+    // No GOOGLE_OAUTH_* here, deliberately — the suite never clicks "Run
+    // sync" or "Reauthorize" (those stay covered by app.spec.ts's
     // fake-injected integration tests), so the server needs none of that to
-    // run cleanly, keeping this suite secret-free and CI-safe.
-    env: { DATABASE_URL: `file:${E2E_DB_PATH}`, RECEIPT_REVIEW_API_PORT: String(PORT) },
+    // run cleanly, keeping this suite secret-free and CI-safe. SPREADSHEET_ID
+    // is explicitly blanked (not just omitted) because Nx auto-loads the
+    // repo root .env into every task's process.env, which `env` here merges
+    // with rather than replaces — without this override the Sheet tab would
+    // render whatever real spreadsheet a developer's local .env points at.
+    env: { DATABASE_URL: `file:${E2E_DB_PATH}`, RECEIPT_REVIEW_API_PORT: String(PORT), SPREADSHEET_ID: '' },
   },
 });

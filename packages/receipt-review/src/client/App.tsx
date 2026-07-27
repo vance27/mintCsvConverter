@@ -8,6 +8,7 @@ import { ImportPage } from './pages/ImportPage.js';
 import { TransactionReviewPage } from './pages/TransactionReviewPage.js';
 import { SyncOverviewPage } from './pages/SyncOverviewPage.js';
 import { RulesSettingsPage } from './pages/RulesSettingsPage.js';
+import { SheetEmbedPage } from './pages/SheetEmbedPage.js';
 
 type SubmitResult = { aggregate: Record<string, number>; manifestPath: string; auditPath: string };
 
@@ -19,15 +20,17 @@ type View =
   | { name: 'import' }
   | { name: 'transaction-review' }
   | { name: 'sync-overview' }
+  | { name: 'sheet' }
   | { name: 'settings' };
 
-type NavTabValue = 'queue' | 'import' | 'transaction-review' | 'sync-overview' | 'settings';
+type NavTabValue = 'queue' | 'import' | 'transaction-review' | 'sync-overview' | 'sheet' | 'settings';
 
 const NAV_TABS: { value: NavTabValue; label: string }[] = [
   { value: 'queue', label: 'Receipts' },
   { value: 'import', label: 'Import' },
   { value: 'transaction-review', label: 'Review transactions' },
   { value: 'sync-overview', label: 'Sync' },
+  { value: 'sheet', label: 'Sheet' },
   { value: 'settings', label: 'Settings' },
 ];
 
@@ -52,6 +55,8 @@ function viewForTab(value: NavTabValue): View {
       return { name: 'transaction-review' };
     case 'sync-overview':
       return { name: 'sync-overview' };
+    case 'sheet':
+      return { name: 'sheet' };
     case 'settings':
       return { name: 'settings' };
   }
@@ -87,6 +92,8 @@ export function App() {
     page = <TransactionReviewPage onSelectReceipt={(receiptId) => setView({ name: 'review', receiptId })} />;
   } else if (view.name === 'sync-overview') {
     page = <SyncOverviewPage />;
+  } else if (view.name === 'sheet') {
+    page = <SheetEmbedPage />;
   } else if (view.name === 'settings') {
     page = <RulesSettingsPage />;
   } else {
