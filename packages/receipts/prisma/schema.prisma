@@ -36,18 +36,18 @@ model Store {
 }
 
 model Item {
-  id           Int      @id @default(autoincrement())
-  storeId      Int
-  itemCode     String?
+  id             Int      @id @default(autoincrement())
+  storeId        Int
+  itemCode       String?
   normalizedName String
-  displayName  String?
-  lastSeenName String
-  createdAt    DateTime @default(now())
+  displayName    String?
+  lastSeenName   String
+  createdAt      DateTime @default(now())
 
-  store            Store              @relation(fields: [storeId], references: [id])
-  splitDefaults    ItemSplitDefault[]
+  store             Store              @relation(fields: [storeId], references: [id])
+  splitDefaults     ItemSplitDefault[]
   priceObservations PriceObservation[]
-  lineItems        LineItem[]
+  lineItems         LineItem[]
 
   // Item-code match is preferred; normalizedName is the per-store fallback.
   @@unique([storeId, itemCode])
@@ -85,10 +85,10 @@ enum ReceiptStatus {
 }
 
 model Receipt {
-  id           Int      @id @default(autoincrement())
+  id           Int           @id @default(autoincrement())
   storeId      Int
   payerId      Int
-  sourceSha256 String   @unique
+  sourceSha256 String        @unique
   sourcePath   String
   purchaseDate DateTime
   subtotal     Float
@@ -104,8 +104,8 @@ model Receipt {
   status       ReceiptStatus @default(EXTRACTED)
   // Set when the review UI (Phase 3) transitions this receipt to SUBMITTED.
   submittedAt  DateTime?
-  reconciled   Boolean  @default(false)
-  createdAt    DateTime @default(now())
+  reconciled   Boolean       @default(false)
+  createdAt    DateTime      @default(now())
 
   store             Store              @relation(fields: [storeId], references: [id])
   payer             Participant        @relation(fields: [payerId], references: [id])
@@ -192,7 +192,7 @@ model VariableSplitRule {
 // plan). Not used by packages/automation's CLI sync, which tracks state via
 // a separate date-based sync-state file instead.
 model ImportedTransaction {
-  id              Int      @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   payer           String
   // Raw MM/DD/YYYY, same convention as TransactionRow throughout the
   // codebase — never a parsed DateTime, to avoid timezone pitfalls and stay
@@ -201,9 +201,9 @@ model ImportedTransaction {
   description     String
   amount          Float
   splitType       String
-  excluded        Boolean  @default(false)
+  excluded        Boolean   @default(false)
   exclusionReason String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime  @default(now())
   syncedAt        DateTime?
   syncRunId       Int?
   // Set when the review UI soft-deletes this staged row (distinct from
@@ -215,10 +215,44 @@ model ImportedTransaction {
 
   syncRun CsvSyncRun? @relation(fields: [syncRunId], references: [id])
 
+  importBatchId Int?
+  importBatch   ImportBatch? @relation(fields: [importBatchId], references: [id])
+
   // Re-importing an overlapping CSV export is idempotent: the same
   // real-world transaction (by payer/date/description/amount) is only ever
   // staged once, regardless of exclusion.
   @@unique([payer, date, description, amount])
+}
+
+// One row per CSV import run (packages/receipt-review's Import tab) — the
+// grouping unit for the Review Transactions page's batch picker. Distinct
+// from CsvSyncRun, which tracks *sync-to-Sheets* runs, set later and
+// possibly spanning transactions from several import batches.
+model ImportBatch {
+  id                    Int      @id @default(autoincrement())
+  // Auto-generated at import time from payer + transaction date range,
+  // user-editable afterward from the Review Transactions page.
+  title                 String
+  // Free-text notes, user-editable, e.g. "remember to also pull the July
+  // return credit next time."
+  description           String?
+  payer                 String
+  // Raw MM/DD/YYYY, same convention as ImportedTransaction.date — the
+  // min/max transaction date actually found among this batch's imported
+  // rows, auto-computed at import time, never user-entered.
+  minDate               String
+  maxDate               String
+  sourceFilename        String
+  csvImportProfileId    Int?
+  createdAt             DateTime @default(now())
+  // Snapshot of the import result, so the picker/summary UI doesn't need to
+  // re-query transaction counts per batch.
+  importedCount         Int
+  skippedDuplicateCount Int
+  excludedCount         Int
+
+  csvImportProfile CsvImportProfile?     @relation(fields: [csvImportProfileId], references: [id])
+  transactions     ImportedTransaction[]
 }
 
 enum CsvSyncRunStatus {
@@ -245,20 +279,22 @@ model CsvImportProfile {
   createdAt         DateTime  @default(now())
   lastUsedAt        DateTime?
 
+  importBatches ImportBatch[]
+
   @@index([headerSignature])
   @@index([hasHeader, columnCount])
 }
 
 model CsvSyncRun {
-  id        Int              @id @default(autoincrement())
-  createdAt DateTime         @default(now())
-  status    CsvSyncRunStatus
+  id                Int              @id @default(autoincrement())
+  createdAt         DateTime         @default(now())
+  status            CsvSyncRunStatus
   // JSON: { payerName, periodLabel, rowCount, status: 'SYNCED'|'FAILED', errorMessage? }[]
   periodResultsJson String
   // Set only for a pre-flight failure (e.g. no saved OAuth token) that
   // happened before any period could be attempted — status ERROR, empty
   // periodResultsJson.
-  errorMessage String?
+  errorMessage      String?
 
   transactions ImportedTransaction[]
 }
