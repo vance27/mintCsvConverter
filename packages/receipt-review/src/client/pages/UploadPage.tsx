@@ -1,72 +1,19 @@
 import { useState } from 'react';
-import {
-  Box,
-  Button,
-  Chip,
-  CircularProgress,
-  Container,
-  List,
-  ListItem,
-  ListItemText,
-  Paper,
-  Stack,
-  TextField,
-  Typography,
-} from '@mui/material';
-import { api } from '../lib/api.js';
-
-interface FileProgress {
-  file: File;
-  jobId?: string;
-  status: 'uploading' | 'pending' | 'done' | 'error';
-  message?: string;
-}
+import { Box, Button, Container, List, ListItem, ListItemText, Paper, Stack, TextField, Typography } from '@mui/material';
 
 interface UploadPageProps {
   onDone: () => void;
 }
 
-const POLL_INTERVAL_MS = 2000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function StatusChip({ status }: { status: FileProgress['status'] }) {
-  if (status === 'done') {
-    return <Chip label="Done" color="success" size="small" />;
-  }
-  if (status === 'error') {
-    return <Chip label="Error" color="error" size="small" />;
-  }
-  return <Chip icon={<CircularProgress size={14} />} label={status === 'uploading' ? 'Uploading' : 'Extracting'} size="small" />;
-}
-
 export function UploadPage({ onDone }: UploadPageProps) {
   const [store, setStore] = useState('Costco');
   const [payer, setPayer] = useState('Brian');
-  const [files, setFiles] = useState<FileProgress[]>([]);
   const [submitting, setSubmitting] = useState(false);
-
-  async function pollJob(jobId: string, index: number): Promise<void> {
-    for (;;) {
-      const res = await api.uploads[':jobId'].$get({ param: { jobId } });
-      const job = await res.json();
-      if (job.status === 'done') {
-        setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, status: 'done' } : f)));
-        return;
-      }
-      if (job.status === 'error') {
-        setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, status: 'error', message: job.message } : f)));
-        return;
-      }
-      await sleep(POLL_INTERVAL_MS);
-    }
-  }
+  const [queuedFilenames, setQueuedFilenames] = useState<string[] | null>(null);
 
   async function handleSubmit(selected: File[]): Promise<void> {
     setSubmitting(true);
-    setFiles(selected.map((file) => ({ file, status: 'uploading' })));
+    setQueuedFilenames(null);
 
     const formData = new FormData();
     for (const file of selected) {
@@ -75,15 +22,14 @@ export function UploadPage({ onDone }: UploadPageProps) {
     formData.append('store', store);
     formData.append('payer', payer);
 
-    const res = await fetch('/api/uploads', { method: 'POST', body: formData });
-    const { jobIds } = (await res.json()) as { jobIds: string[] };
-
-    setFiles((prev) => prev.map((f, i) => ({ ...f, jobId: jobIds[i], status: 'pending' })));
-    await Promise.all(jobIds.map((jobId, index) => pollJob(jobId, index)));
+    // enqueue() already awaits the placeholder Receipt row's DB write
+    // before this responds, so there's no "hasn't shown up yet" gap to
+    // bridge — the Receipts table (now durable and polling on its own) is
+    // the single place to watch extraction progress from here on.
+    await fetch('/api/uploads', { method: 'POST', body: formData });
+    setQueuedFilenames(selected.map((file) => file.name));
     setSubmitting(false);
   }
-
-  const allDone = files.length > 0 && files.every((f) => f.status === 'done' || f.status === 'error');
 
   return (
     <Container maxWidth="sm" sx={{ py: 6 }}>
@@ -109,25 +55,24 @@ export function UploadPage({ onDone }: UploadPageProps) {
               }}
             />
           </Button>
-          {files.length > 0 ? (
-            <List>
-              {files.map((f, i) => (
-                <ListItem
-                  key={i}
-                  secondaryAction={<StatusChip status={f.status} />}
-                  sx={{ bgcolor: 'background.default', borderRadius: 1, mb: 1 }}
-                >
-                  <ListItemText primary={f.file.name} secondary={f.message} />
-                </ListItem>
-              ))}
-            </List>
-          ) : null}
-          {allDone ? (
-            <Box>
-              <Button variant="outlined" onClick={onDone}>
-                Go to review queue
-              </Button>
-            </Box>
+          {queuedFilenames ? (
+            <>
+              <Typography color="text.secondary">
+                {queuedFilenames.length} file{queuedFilenames.length === 1 ? '' : 's'} queued for extraction:
+              </Typography>
+              <List>
+                {queuedFilenames.map((name, i) => (
+                  <ListItem key={i} sx={{ bgcolor: 'background.default', borderRadius: 1, mb: 1 }}>
+                    <ListItemText primary={name} />
+                  </ListItem>
+                ))}
+              </List>
+              <Box>
+                <Button variant="outlined" onClick={onDone}>
+                  Go to review queue
+                </Button>
+              </Box>
+            </>
           ) : null}
         </Stack>
       </Paper>

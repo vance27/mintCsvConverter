@@ -130,6 +130,23 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
     );
   }
 
+  if (detail.purchaseDate === null || detail.total === null) {
+    return (
+      <Container sx={{ py: 6 }}>
+        <Stack spacing={2} sx={{ alignItems: 'flex-start' }}>
+          <Button variant="outlined" onClick={onBack}>
+            Back to queue
+          </Button>
+          <Typography color="text.secondary">
+            {detail.status === 'FAILED'
+              ? `Extraction failed: ${detail.extractionError ?? 'unknown error'}. Retry from the queue.`
+              : `${detail.originalFilename ?? 'This receipt'} is still being extracted — check back in a moment.`}
+          </Typography>
+        </Stack>
+      </Container>
+    );
+  }
+
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <Grid container spacing={3}>
