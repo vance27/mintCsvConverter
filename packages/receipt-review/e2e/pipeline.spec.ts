@@ -100,4 +100,30 @@ test.describe('receipt-review pipeline', () => {
     await page.getByRole('row', { name: /Costco Wholesale/ }).getByRole('button', { name: 'Undo removal' }).click();
     await expect(page.getByText('Removed', { exact: true })).toHaveCount(0);
   });
+
+  // A CSV shape with no saved CsvImportProfile — never seen before — so the
+  // configurator should appear instead of importing straight away.
+  const NEW_SHAPE_CSV = ['Date,Description,Amount', '08/01/2026,Target Run,45.00'].join('\n');
+
+  test('a never-before-seen CSV shape goes through the configurator, then imports', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('tab', { name: 'Import' }).click();
+
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'other-bank-export.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(NEW_SHAPE_CSV),
+    });
+
+    await expect(page.getByRole('heading', { name: 'Configure a new CSV format' })).toBeVisible();
+    // Column defaults already line up for this 3-column Date/Description/Amount
+    // shape, so only the profile name needs filling in.
+    await page.getByLabel('Profile name').fill('Other Bank');
+    await page.getByRole('button', { name: 'Save & Import' }).click();
+
+    await expect(page.getByText('1 staged, 0 already staged, 0 excluded')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('tab', { name: 'Review transactions' }).click();
+    await expect(page.getByRole('cell', { name: 'Target Run' })).toBeVisible();
+  });
 });

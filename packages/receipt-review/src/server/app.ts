@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
@@ -19,6 +21,10 @@ import {
   createVariableSplitRule,
   deleteVariableSplitRule,
   createVariableSplitRuleSchema,
+  listCsvImportProfiles,
+  createCsvImportProfile,
+  deleteCsvImportProfile,
+  createCsvImportProfileSchema,
   type AggregateLine,
   type PrismaClient,
   type VisionChatClient,
@@ -28,6 +34,7 @@ import { listImportedTransactions, toTransactionSummary } from './transactionQue
 import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from './lineItemReview.js';
 import { TransactionSyncedError, updateImportedTransaction, updateImportedTransactionSchema } from './transactionMutations.js';
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
+import { previewCsvImport } from './csvPreview.js';
 import { UploadJobs } from './uploadJobs.js';
 import { ImportJobs } from './importJobs.js';
 import { buildSyncOverview, runSyncOverview, listSyncRuns } from './syncRun.js';
@@ -156,8 +163,40 @@ export function createApp(deps: AppDeps) {
       return c.json(job);
     })
 
+    // Parses a raw CSV (no commitment) and tries to auto-detect a saved
+    // CsvImportProfile — the configurator UI's first step. Synchronous:
+    // this is just CSV parsing, not the slow VLM work /api/uploads kicks
+    // off, so no job-polling needed.
+    .post('/api/csv-import-preview', async (c) => {
+      const body = await c.req.parseBody();
+      const file = body['file'];
+      if (!(file instanceof File)) {
+        throw new HTTPException(400, { message: 'No file uploaded' });
+      }
+      const dir = mkdtempSync(join(tmpdir(), 'csv-preview-'));
+      const csvPath = join(dir, file.name);
+      writeFileSync(csvPath, new Uint8Array(await file.arrayBuffer()));
+      const preview = await previewCsvImport(deps.prisma, csvPath);
+      return c.json(preview);
+    })
+
+    .get('/api/csv-import-profiles', async (c) => c.json(await listCsvImportProfiles(deps.prisma)))
+
+    .post('/api/csv-import-profiles', zValidator('json', createCsvImportProfileSchema), async (c) => {
+      const profile = await createCsvImportProfile(deps.prisma, c.req.valid('json'));
+      return c.json(profile);
+    })
+
+    .delete('/api/csv-import-profiles/:id', async (c) => {
+      await deleteCsvImportProfile(deps.prisma, parseIntParam(c.req.param('id')));
+      return c.json({ ok: true });
+    })
+
     // CSV import — stages ImportedTransaction rows only, never touches
-    // Google Sheets (see /api/sync-runs for that, a separate, explicit step).
+    // Google Sheets (see /api/sync-runs for that, a separate, explicit
+    // step). Requires a profileId resolved via the preview step above
+    // (either an auto-detected match or one just saved from the
+    // configurator) so every import's column mapping is explicit.
     .post('/api/imports', async (c) => {
       const body = await c.req.parseBody({ all: true });
       const files = ([] as File[]).concat((body['files'] ?? []) as File | File[]);
@@ -165,11 +204,15 @@ export function createApp(deps: AppDeps) {
         throw new HTTPException(400, { message: 'No files uploaded' });
       }
       const payer = typeof body['payer'] === 'string' ? body['payer'] : 'Brian';
+      const profileId = Number(body['profileId']);
+      if (!Number.isInteger(profileId)) {
+        throw new HTTPException(400, { message: 'Missing or invalid profileId' });
+      }
 
       const jobIds = await Promise.all(
         files.map(async (file) => {
           const buffer = new Uint8Array(await file.arrayBuffer());
-          return importJobs.start(buffer, file.name, { payer });
+          return importJobs.start(buffer, file.name, { payer, profileId });
         }),
       );
       return c.json({ jobIds });

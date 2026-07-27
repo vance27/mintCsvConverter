@@ -148,7 +148,8 @@ describe('snapshot + restore round trip', () => {
     // INSERTs, plus seedSampleData's own extra row.
     await expect(prisma.payerExclusionRule.count()).resolves.toBeGreaterThan(1);
     await expect(prisma.variableSplitRule.count()).resolves.toBeGreaterThan(1);
-    await expect(prisma.csvImportProfile.count()).resolves.toBe(1);
+    // Includes the seed migration's own "Citi (default)" row plus this test's.
+    await expect(prisma.csvImportProfile.count()).resolves.toBeGreaterThan(1);
 
     await restoreSnapshot(prisma, {
       version: 2,

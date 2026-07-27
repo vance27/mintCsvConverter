@@ -11,6 +11,11 @@ function fakeClient(content: unknown): VisionChatClient {
   return { chat: vi.fn(async () => ({ message: { content: JSON.stringify(content) } })) };
 }
 
+/** The seed migration's default Citi profile — present in every freshly-migrated test DB. */
+async function citiProfileId(prisma: PrismaClient): Promise<number> {
+  return (await prisma.csvImportProfile.findFirstOrThrow({ where: { name: 'Citi (default)' } })).id;
+}
+
 /** A minimal, valid, distinct-content PDF — same fixture style as packages/receipts' own specs. */
 function writeFixturePdf(dir: string, name: string, width = 200): string {
   const path = join(dir, name);
@@ -177,6 +182,7 @@ describe('app', () => {
     const formData = new FormData();
     formData.append('files', new Blob([csv]), 'export.csv');
     formData.append('payer', 'Brian');
+    formData.append('profileId', String(await citiProfileId(prisma)));
 
     const importRes = await app.request('/api/imports', { method: 'POST', body: formData });
     expect(importRes.status).toBe(200);
@@ -204,6 +210,87 @@ describe('app', () => {
     ]);
   });
 
+  it('previews a Citi-shaped CSV and auto-detects the seeded default profile', async () => {
+    const { app } = setup();
+    const csv = ['Status,Date,Description,Debit,Credit,Member Name', 'Cleared,06/20/2026,Chipotle Mexican Grill,25.00,,BRIAN K VANCE'].join('\n');
+    const formData = new FormData();
+    formData.append('file', new Blob([csv]), 'export.csv');
+
+    const res = await app.request('/api/csv-import-preview', { method: 'POST', body: formData });
+    expect(res.status).toBe(200);
+    const preview = (await res.json()) as { columnCount: number; detectedProfile: { name: string } | null };
+    expect(preview.columnCount).toBe(6);
+    expect(preview.detectedProfile?.name).toBe('Citi (default)');
+  });
+
+  it('previews a never-before-seen CSV shape and finds no matching profile', async () => {
+    const { app } = setup();
+    const csv = ['Date,Description,Amount', '06/20/2026,Chipotle,-25.00'].join('\n');
+    const formData = new FormData();
+    formData.append('file', new Blob([csv]), 'export.csv');
+
+    const res = await app.request('/api/csv-import-preview', { method: 'POST', body: formData });
+    expect(res.status).toBe(200);
+    const preview = (await res.json()) as { columnCount: number; detectedProfile: unknown };
+    expect(preview.columnCount).toBe(3);
+    expect(preview.detectedProfile).toBeNull();
+  });
+
+  it('CRUDs CSV import profiles and imports a non-Citi CSV shape through a newly-saved one', async () => {
+    const { app } = setup();
+
+    const createRes = await app.request('/api/csv-import-profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Single Amount column',
+        hasHeader: true,
+        columnCount: 3,
+        headerSignature: 'date,description,amount',
+        columnMapping: {
+          hasHeader: true,
+          dateColumn: { byName: 'date' },
+          descriptionColumn: { byName: 'description' },
+          amount: { mode: 'SIGNED_AMOUNT', amountColumn: { byName: 'amount' }, flipSign: true },
+        },
+      }),
+    });
+    expect(createRes.status).toBe(200);
+    const profile = (await createRes.json()) as { id: number; name: string };
+
+    const listRes = await app.request('/api/csv-import-profiles');
+    expect((await listRes.json()) as { name: string }[]).toContainEqual(expect.objectContaining({ name: 'Single Amount column' }));
+
+    const csv = ['Date,Description,Amount', '06/20/2026,Refund from Chipotle,25.00', '06/21/2026,Costco run,-150.00'].join('\n');
+    const formData = new FormData();
+    formData.append('files', new Blob([csv]), 'export.csv');
+    formData.append('payer', 'Brian');
+    formData.append('profileId', String(profile.id));
+    const importRes = await app.request('/api/imports', { method: 'POST', body: formData });
+    const { jobIds } = (await importRes.json()) as { jobIds: string[] };
+
+    let job: { status: string } | undefined;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      job = (await (await app.request(`/api/imports/${jobIds[0]}`)).json()) as typeof job;
+      if (job?.status !== 'pending') break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(job?.status).toBe('done');
+
+    const staged = await prisma.importedTransaction.findMany({ orderBy: { date: 'asc' } });
+    // flipSign: true negates the raw column value, so a positive "Amount"
+    // (refund) becomes negative and a negative one (purchase) becomes positive.
+    expect(staged.map((t) => ({ description: t.description, amount: t.amount, splitType: t.splitType }))).toEqual([
+      { description: 'Refund from Chipotle', amount: -25, splitType: 'Equally' },
+      { description: 'Costco run', amount: 150, splitType: 'Variably' },
+    ]);
+
+    const deleteRes = await app.request(`/api/csv-import-profiles/${profile.id}`, { method: 'DELETE' });
+    expect(deleteRes.status).toBe(200);
+    const afterDelete = (await (await app.request('/api/csv-import-profiles')).json()) as { id: number }[];
+    expect(afterDelete.some((p) => p.id === profile.id)).toBe(false);
+  });
+
   it('re-importing an overlapping export skips already-staged transactions', async () => {
     const { app } = setup();
     const csv = ['Status,Date,Description,Debit,Credit,Member Name', 'Cleared,06/20/2026,Chipotle Mexican Grill,25.00,,BRIAN K VANCE'].join(
@@ -214,6 +301,7 @@ describe('app', () => {
       const formData = new FormData();
       formData.append('files', new Blob([csv]), 'export.csv');
       formData.append('payer', 'Brian');
+      formData.append('profileId', String(await citiProfileId(prisma)));
       const res = await app.request('/api/imports', { method: 'POST', body: formData });
       const { jobIds } = (await res.json()) as { jobIds: string[] };
 
@@ -264,6 +352,7 @@ describe('app', () => {
     const formData = new FormData();
     formData.append('files', new Blob([csv]), 'export.csv');
     formData.append('payer', 'Brian');
+    formData.append('profileId', String(await citiProfileId(prisma)));
     const importRes = await app.request('/api/imports', { method: 'POST', body: formData });
     const { jobIds } = (await importRes.json()) as { jobIds: string[] };
     let job: { status: string; result?: { excludedCount: number } } | undefined;

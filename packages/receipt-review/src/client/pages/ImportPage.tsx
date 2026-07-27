@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { InferResponseType } from 'hono/client';
 import {
   Box,
   Button,
@@ -17,6 +18,9 @@ import {
   Typography,
 } from '@mui/material';
 import { api } from '../lib/api.js';
+import { CsvConfiguratorPage } from './CsvConfiguratorPage.js';
+
+type CsvPreview = InferResponseType<(typeof api)['csv-import-preview']['$post']>;
 
 interface ImportResult {
   importedCount: number;
@@ -27,7 +31,7 @@ interface ImportResult {
 interface FileProgress {
   file: File;
   jobId?: string;
-  status: 'uploading' | 'pending' | 'done' | 'error';
+  status: 'previewing' | 'configuring' | 'uploading' | 'pending' | 'done' | 'error';
   message?: string;
   result?: ImportResult;
 }
@@ -45,19 +49,28 @@ function StatusChip({ status }: { status: FileProgress['status'] }) {
   if (status === 'error') {
     return <Chip label="Error" color="error" size="small" />;
   }
-  return <Chip icon={<CircularProgress size={14} />} label={status === 'uploading' ? 'Uploading' : 'Importing'} size="small" />;
+  const label = { previewing: 'Checking format', configuring: 'Needs configuration', uploading: 'Uploading', pending: 'Importing' }[status];
+  return <Chip icon={<CircularProgress size={14} />} label={label} size="small" />;
 }
 
 /**
- * Uploads a Citi CSV export and stages it as ImportedTransaction rows —
- * never touches Google Sheets. See SyncOverviewPage for the separate,
- * explicit sync step, and TransactionReviewPage for reviewing what got
- * staged against receipts.
+ * Uploads a Citi (or other, once configured) CSV export and stages it as
+ * ImportedTransaction rows — never touches Google Sheets. See
+ * SyncOverviewPage for the separate, explicit sync step, and
+ * TransactionReviewPage for reviewing what got staged against receipts.
+ *
+ * Every file is previewed first (/api/csv-import-preview) to auto-detect
+ * a saved CsvImportProfile (the seeded "Citi (default)" one covers the
+ * common case with zero user interaction). A genuinely new CSV shape
+ * shows CsvConfiguratorPage instead — files are processed one at a time
+ * so at most one configurator prompt is ever on screen.
  */
 export function ImportPage() {
   const [payer, setPayer] = useState('Brian');
   const [files, setFiles] = useState<FileProgress[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [configuring, setConfiguring] = useState<{ index: number; file: File; preview: CsvPreview } | null>(null);
+  const configuratorResolveRef = useRef<((profileId: number | null) => void) | null>(null);
 
   async function pollJob(jobId: string, index: number): Promise<void> {
     for (;;) {
@@ -75,22 +88,63 @@ export function ImportPage() {
     }
   }
 
+  async function resolveProfileId(file: File, index: number): Promise<number | null> {
+    const previewFormData = new FormData();
+    previewFormData.append('file', file);
+    const res = await fetch('/api/csv-import-preview', { method: 'POST', body: previewFormData });
+    const preview = (await res.json()) as CsvPreview;
+
+    if (preview.detectedProfile) {
+      return preview.detectedProfile.id;
+    }
+
+    setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, status: 'configuring' } : f)));
+    const profileId = await new Promise<number | null>((resolve) => {
+      configuratorResolveRef.current = resolve;
+      setConfiguring({ index, file, preview });
+    });
+    setConfiguring(null);
+    return profileId;
+  }
+
   async function handleSubmit(selected: File[]): Promise<void> {
     setSubmitting(true);
-    setFiles(selected.map((file) => ({ file, status: 'uploading' })));
+    setFiles(selected.map((file) => ({ file, status: 'previewing' })));
 
-    const formData = new FormData();
-    for (const file of selected) {
+    for (let index = 0; index < selected.length; index++) {
+      const file = selected[index];
+      const profileId = await resolveProfileId(file, index);
+      if (profileId === null) {
+        setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, status: 'error', message: 'Skipped — not configured' } : f)));
+        continue;
+      }
+
+      setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, status: 'uploading' } : f)));
+      const formData = new FormData();
       formData.append('files', file);
+      formData.append('payer', payer);
+      formData.append('profileId', String(profileId));
+      const res = await fetch('/api/imports', { method: 'POST', body: formData });
+      const { jobIds } = (await res.json()) as { jobIds: string[] };
+
+      setFiles((prev) => prev.map((f, i) => (i === index ? { ...f, jobId: jobIds[0], status: 'pending' } : f)));
+      await pollJob(jobIds[0], index);
     }
-    formData.append('payer', payer);
 
-    const res = await fetch('/api/imports', { method: 'POST', body: formData });
-    const { jobIds } = (await res.json()) as { jobIds: string[] };
-
-    setFiles((prev) => prev.map((f, i) => ({ ...f, jobId: jobIds[i], status: 'pending' })));
-    await Promise.all(jobIds.map((jobId, index) => pollJob(jobId, index)));
     setSubmitting(false);
+  }
+
+  if (configuring) {
+    return (
+      <Container maxWidth="md" sx={{ py: 6 }}>
+        <CsvConfiguratorPage
+          fileName={configuring.file.name}
+          preview={configuring.preview}
+          onCancel={() => configuratorResolveRef.current?.(null)}
+          onSaved={(profile) => configuratorResolveRef.current?.(profile.id)}
+        />
+      </Container>
+    );
   }
 
   return (

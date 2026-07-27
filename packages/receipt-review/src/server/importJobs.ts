@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ImportFileToLines } from '@mint-csv-converter/core';
+import { ImportFileToLines, type CsvColumnMapping } from '@mint-csv-converter/core';
 import { loadDbBackedFactory } from '@mint-csv-converter/automation';
 import type { PrismaClient } from '@mint-csv-converter/receipts';
 
@@ -29,7 +29,7 @@ export class ImportJobs {
 
   constructor(private readonly deps: ImportJobsDeps) {}
 
-  start(csvBuffer: Uint8Array, filename: string, options: { payer: string }): string {
+  start(csvBuffer: Uint8Array, filename: string, options: { payer: string; profileId: number }): string {
     const jobId = randomUUID();
     this.jobs.set(jobId, { status: 'pending' });
 
@@ -37,7 +37,7 @@ export class ImportJobs {
     const csvPath = join(dir, filename);
     writeFileSync(csvPath, csvBuffer);
 
-    importCsv(this.deps.prisma, csvPath, options.payer)
+    importCsv(this.deps.prisma, csvPath, options.payer, options.profileId)
       .then((result) => this.jobs.set(jobId, { status: 'done', result }))
       .catch((error: unknown) => {
         this.jobs.set(jobId, { status: 'error', message: error instanceof Error ? error.message : String(error) });
@@ -51,9 +51,11 @@ export class ImportJobs {
   }
 }
 
-async function importCsv(prisma: PrismaClient, csvPath: string, payer: string): Promise<ImportResult> {
+async function importCsv(prisma: PrismaClient, csvPath: string, payer: string, profileId: number): Promise<ImportResult> {
   const factory = await loadDbBackedFactory(prisma);
-  const rows = new ImportFileToLines(csvPath).getResults().slice(1); // skip header
+  const profile = await prisma.csvImportProfile.findUniqueOrThrow({ where: { id: profileId } });
+  const mapping = JSON.parse(profile.columnMappingJson) as CsvColumnMapping;
+  const rows = new ImportFileToLines(csvPath, mapping).getResults().slice(1); // skip header
 
   let excludedCount = 0;
   const candidates = rows.map((line) => {

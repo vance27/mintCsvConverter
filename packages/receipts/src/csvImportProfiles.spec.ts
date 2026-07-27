@@ -48,6 +48,9 @@ describe('csvImportProfiles', () => {
 
   it('creates and lists a profile, round-tripping the column mapping through JSON', async () => {
     const prisma = db();
+    // Clear the seed migration's own "Citi (default)" row so the listing
+    // assertion below is exact, not just "contains."
+    await prisma.csvImportProfile.deleteMany();
     const created = await createCsvImportProfile(prisma, CITI_LIKE_PROFILE);
     expect(created.columnMapping).toEqual(CITI_LIKE_PROFILE.columnMapping);
 
@@ -57,6 +60,7 @@ describe('csvImportProfiles', () => {
 
   it('deletes a profile by id', async () => {
     const prisma = db();
+    await prisma.csvImportProfile.deleteMany();
     const created = await createCsvImportProfile(prisma, CITI_LIKE_PROFILE);
     await deleteCsvImportProfile(prisma, created.id);
     expect(await listCsvImportProfiles(prisma)).toEqual([]);
