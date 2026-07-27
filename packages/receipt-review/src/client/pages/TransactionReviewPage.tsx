@@ -3,6 +3,7 @@ import type { InferResponseType } from 'hono/client';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PriorityHighIcon from '@mui/icons-material/PriorityHigh';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import UndoIcon from '@mui/icons-material/Undo';
 import EditIcon from '@mui/icons-material/Edit';
 import {
@@ -107,6 +108,9 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
   const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
   const [editingBatch, setEditingBatch] = useState<{ title: string; description: string } | null>(null);
   const [savingBatch, setSavingBatch] = useState(false);
+  const [batchSyncedCount, setBatchSyncedCount] = useState<{ synced: number; total: number } | null>(null);
+  const [deletingBatch, setDeletingBatch] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   async function loadBatches(): Promise<ImportBatchSummary[]> {
     const res = await api['import-batches'].$get();
@@ -123,6 +127,41 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
   }, []);
 
   const selectedBatch = selectedBatchId !== 'ALL' ? (batches ?? []).find((b) => b.id === selectedBatchId) : undefined;
+
+  useEffect(() => {
+    if (typeof selectedBatchId !== 'number') {
+      setBatchSyncedCount(null);
+      return;
+    }
+    void (async () => {
+      const [totalRes, syncedRes] = await Promise.all([
+        api.transactions.$get({ query: { importBatchId: String(selectedBatchId), syncedStatus: 'ALL', pageSize: '10' } }),
+        api.transactions.$get({ query: { importBatchId: String(selectedBatchId), syncedStatus: 'SYNCED', pageSize: '10' } }),
+      ]);
+      if (!totalRes.ok || !syncedRes.ok) {
+        return;
+      }
+      const [totalBody, syncedBody] = await Promise.all([totalRes.json(), syncedRes.json()]);
+      setBatchSyncedCount({ synced: syncedBody.totalCount, total: totalBody.totalCount });
+    })();
+  }, [selectedBatchId]);
+
+  async function deleteBatch(): Promise<void> {
+    if (typeof selectedBatchId !== 'number') {
+      return;
+    }
+    setDeletingBatch(true);
+    try {
+      const res = await api['import-batches'][':id'].$delete({ param: { id: String(selectedBatchId) } });
+      if (res.ok) {
+        const loaded = await loadBatches();
+        setSelectedBatchId(loaded.length > 0 ? loaded[0].id : 'ALL');
+        setConfirmingDelete(false);
+      }
+    } finally {
+      setDeletingBatch(false);
+    }
+  }
 
   async function saveBatchEdit(): Promise<void> {
     if (!editingBatch || typeof selectedBatchId !== 'number') {
@@ -228,6 +267,26 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                 >
                   <EditIcon fontSize="small" />
                 </IconButton>
+              </Tooltip>
+            ) : null}
+            {selectedBatch ? (
+              <Tooltip
+                title={
+                  batchSyncedCount && batchSyncedCount.synced > 0
+                    ? `Can't delete — ${batchSyncedCount.synced} of ${batchSyncedCount.total} transactions already synced`
+                    : 'Delete this import'
+                }
+              >
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label="Delete import"
+                    disabled={!batchSyncedCount || batchSyncedCount.synced > 0}
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    <DeleteForeverIcon fontSize="small" />
+                  </IconButton>
+                </span>
               </Tooltip>
             ) : null}
             <ToggleButtonGroup
@@ -384,6 +443,23 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
           </Button>
           <Button onClick={() => void saveBatchEdit()} variant="contained" disabled={savingBatch || !editingBatch?.title.trim()}>
             Save
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={confirmingDelete} onClose={() => setConfirmingDelete(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Delete import?</DialogTitle>
+        <DialogContent>
+          <Typography>
+            This will permanently delete "{selectedBatch?.title}" and its {batchSyncedCount?.total ?? 0} staged transaction
+            {batchSyncedCount?.total === 1 ? '' : 's'}. This can't be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmingDelete(false)} disabled={deletingBatch}>
+            Cancel
+          </Button>
+          <Button onClick={() => void deleteBatch()} variant="contained" color="error" disabled={deletingBatch}>
+            Delete
           </Button>
         </DialogActions>
       </Dialog>
