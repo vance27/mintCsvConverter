@@ -24,6 +24,11 @@ packages/receipts/src/generated/
 # clasp (Apps Script) — contains the script ID, kept local-only
 .clasp.json
 
+# Playwright e2e (packages/receipt-review) — its own isolated DB and run output
+packages/receipt-review/e2e/.tmp/
+packages/receipt-review/playwright-report/
+packages/receipt-review/test-results/
+
 # Editor
 .vscode/
 

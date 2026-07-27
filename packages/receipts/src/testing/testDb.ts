@@ -7,7 +7,8 @@ import { createPrismaClient, type PrismaClient } from '../db.js';
 
 const MIGRATIONS_DIR = fileURLToPath(new URL('../../prisma/migrations', import.meta.url));
 
-function applyMigrations(dbPath: string): void {
+/** Applies every migration to (an already-existing) dbPath — exported so other packages' test/e2e setup can migrate a DB at a path of their own choosing, not just createTestDb's own temp dir. */
+export function migrateDbAt(dbPath: string): void {
   const db = new Database(dbPath);
   const migrationDirs = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -23,7 +24,7 @@ function applyMigrations(dbPath: string): void {
 export function createTestDb(): { prisma: PrismaClient; cleanup: () => void } {
   const dir = mkdtempSync(join(tmpdir(), 'receipts-test-'));
   const dbPath = join(dir, 'test.db');
-  applyMigrations(dbPath);
+  migrateDbAt(dbPath);
 
   const prisma = createPrismaClient(`file:${dbPath}`);
   return {

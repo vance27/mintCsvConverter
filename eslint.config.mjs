@@ -93,6 +93,21 @@ export default defineConfig(
     },
   },
   {
+    // e2e/ has its own standalone tsconfig.json (no project references) so
+    // Playwright's own tsconfig auto-discovery — which walks up from
+    // playwright.config.ts and fully resolves whatever tsconfig.json it
+    // finds nearest, including "references" — doesn't choke trying to
+    // recursively follow the rest of this package's composite build graph.
+    files: ['packages/receipt-review/e2e/**/*.ts'],
+    extends: [...tseslint.configs.recommendedTypeChecked],
+    languageOptions: {
+      parserOptions: {
+        project: ['packages/receipt-review/e2e/tsconfig.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
     // Test doubles frequently satisfy an async interface (e.g. `fetch`,
     // `SheetsClient.addTransactionsForPeriod`) without needing to await
     // anything themselves — that's not a real missing-await bug. Placed

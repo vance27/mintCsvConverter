@@ -17,6 +17,15 @@
         "commands": ["nx run @mint-csv-converter/receipt-review:serve-api", "nx run @mint-csv-converter/receipt-review:serve"],
         "parallel": true
       }
+    },
+    "e2e": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^build"],
+      "options": {
+        "cwd": "packages/receipt-review",
+        "command": "playwright test --config e2e/playwright.config.ts"
+      }
     }
   }
 }

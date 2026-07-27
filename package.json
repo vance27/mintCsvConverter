@@ -19,6 +19,7 @@
     "@nx/rollup": "23.1.0",
     "@nx/vite": "23.1.0",
     "@nx/vitest": "23.1.0",
+    "@playwright/test": "1.62.0",
     "@rollup/plugin-commonjs": "29.0.3",
     "@rollup/plugin-node-resolve": "16.0.3",
     "@rollup/plugin-typescript": "12.3.0",
