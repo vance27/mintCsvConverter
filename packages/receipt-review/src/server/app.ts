@@ -13,6 +13,7 @@ import { getReceiptDetail, listReceipts } from './receiptQueries.js';
 import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from './lineItemReview.js';
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
 import { UploadJobs } from './uploadJobs.js';
+import { ImportJobs } from './importJobs.js';
 import { generateAuditHtml, writeAuditHtml, defaultAuditDir } from './auditReport.js';
 
 export interface AppDeps {
@@ -38,6 +39,7 @@ function parseIntParam(value: string): number {
 
 export function createApp(deps: AppDeps) {
   const uploadJobs = new UploadJobs({ prisma: deps.prisma, client: deps.client, receiptsBaseDir: deps.receiptsBaseDir });
+  const importJobs = new ImportJobs({ prisma: deps.prisma });
 
   const app = new Hono()
     .get('/api/health', (c) => c.json({ ok: true }))
@@ -108,6 +110,33 @@ export function createApp(deps: AppDeps) {
 
     .get('/api/uploads/:jobId', (c) => {
       const job = uploadJobs.get(c.req.param('jobId'));
+      if (!job) {
+        throw new HTTPException(404, { message: 'Unknown job id' });
+      }
+      return c.json(job);
+    })
+
+    // CSV import — stages ImportedTransaction rows only, never touches
+    // Google Sheets (see /api/sync-runs for that, a separate, explicit step).
+    .post('/api/imports', async (c) => {
+      const body = await c.req.parseBody({ all: true });
+      const files = ([] as File[]).concat((body['files'] ?? []) as File | File[]);
+      if (files.length === 0) {
+        throw new HTTPException(400, { message: 'No files uploaded' });
+      }
+      const payer = typeof body['payer'] === 'string' ? body['payer'] : 'Brian';
+
+      const jobIds = await Promise.all(
+        files.map(async (file) => {
+          const buffer = new Uint8Array(await file.arrayBuffer());
+          return importJobs.start(buffer, file.name, { payer });
+        }),
+      );
+      return c.json({ jobIds });
+    })
+
+    .get('/api/imports/:jobId', (c) => {
+      const job = importJobs.get(c.req.param('jobId'));
       if (!job) {
         throw new HTTPException(404, { message: 'Unknown job id' });
       }

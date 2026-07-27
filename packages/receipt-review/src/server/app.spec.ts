@@ -164,4 +164,79 @@ describe('app', () => {
     expect(job?.status).toBe('done');
     expect(job?.result?.receiptId).toBeGreaterThan(0);
   });
+
+  it('imports a CSV export, staging transactions without touching Sheets', async () => {
+    const { app } = setup();
+    const csv = [
+      'Status,Date,Description,Debit,Credit,Member Name',
+      'Cleared,06/20/2026,Chipotle Mexican Grill,25.00,,BRIAN K VANCE',
+      'Cleared,06/21/2026,Costco Wholesale,150.00,,BRIAN K VANCE',
+      'Cleared,06/22/2026,CITI CARD PAYMENT,500.00,,BRIAN K VANCE',
+    ].join('\n');
+    const formData = new FormData();
+    formData.append('files', new Blob([csv]), 'export.csv');
+    formData.append('payer', 'Brian');
+
+    const importRes = await app.request('/api/imports', { method: 'POST', body: formData });
+    expect(importRes.status).toBe(200);
+    const { jobIds } = (await importRes.json()) as { jobIds: string[] };
+    expect(jobIds).toHaveLength(1);
+
+    let job: { status: string; result?: { importedCount: number; skippedDuplicateCount: number; excludedCount: number } } | undefined;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const res = await app.request(`/api/imports/${jobIds[0]}`);
+      job = (await res.json()) as typeof job;
+      if (job?.status !== 'pending') {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    expect(job?.status).toBe('done');
+    expect(job?.result).toEqual({ importedCount: 3, skippedDuplicateCount: 0, excludedCount: 1 });
+
+    const staged = await prisma.importedTransaction.findMany({ orderBy: { date: 'asc' } });
+    expect(staged.map((t) => ({ description: t.description, splitType: t.splitType, excluded: t.excluded }))).toEqual([
+      { description: 'Chipotle Mexican Grill', splitType: 'Equally', excluded: false },
+      { description: 'Costco Wholesale', splitType: 'Variably', excluded: false },
+      { description: 'CITI CARD PAYMENT', splitType: 'Equally', excluded: true },
+    ]);
+  });
+
+  it('re-importing an overlapping export skips already-staged transactions', async () => {
+    const { app } = setup();
+    const csv = ['Status,Date,Description,Debit,Credit,Member Name', 'Cleared,06/20/2026,Chipotle Mexican Grill,25.00,,BRIAN K VANCE'].join(
+      '\n',
+    );
+
+    async function importOnce(): Promise<{ importedCount: number; skippedDuplicateCount: number; excludedCount: number }> {
+      const formData = new FormData();
+      formData.append('files', new Blob([csv]), 'export.csv');
+      formData.append('payer', 'Brian');
+      const res = await app.request('/api/imports', { method: 'POST', body: formData });
+      const { jobIds } = (await res.json()) as { jobIds: string[] };
+
+      let job: { status: string; result?: { importedCount: number; skippedDuplicateCount: number; excludedCount: number } } | undefined;
+      for (let attempt = 0; attempt < 50; attempt++) {
+        const jobRes = await app.request(`/api/imports/${jobIds[0]}`);
+        job = (await jobRes.json()) as typeof job;
+        if (job?.status !== 'pending') {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      if (!job?.result) {
+        throw new Error(`Import job did not complete: ${JSON.stringify(job)}`);
+      }
+      return job.result;
+    }
+
+    const first = await importOnce();
+    expect(first).toEqual({ importedCount: 1, skippedDuplicateCount: 0, excludedCount: 0 });
+
+    const second = await importOnce();
+    expect(second).toEqual({ importedCount: 0, skippedDuplicateCount: 1, excludedCount: 0 });
+
+    expect(await prisma.importedTransaction.count()).toBe(1);
+  });
 });
