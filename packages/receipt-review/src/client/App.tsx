@@ -7,6 +7,7 @@ import { SubmittedPage } from './pages/SubmittedPage.js';
 import { ImportPage } from './pages/ImportPage.js';
 import { TransactionReviewPage } from './pages/TransactionReviewPage.js';
 import { SyncOverviewPage } from './pages/SyncOverviewPage.js';
+import { RulesSettingsPage } from './pages/RulesSettingsPage.js';
 
 type SubmitResult = { aggregate: Record<string, number>; manifestPath: string; auditPath: string };
 
@@ -17,15 +18,17 @@ type View =
   | { name: 'submitted'; result: SubmitResult; wasUpdate: boolean }
   | { name: 'import' }
   | { name: 'transaction-review' }
-  | { name: 'sync-overview' };
+  | { name: 'sync-overview' }
+  | { name: 'settings' };
 
-type NavTabValue = 'queue' | 'import' | 'transaction-review' | 'sync-overview';
+type NavTabValue = 'queue' | 'import' | 'transaction-review' | 'sync-overview' | 'settings';
 
 const NAV_TABS: { value: NavTabValue; label: string }[] = [
   { value: 'queue', label: 'Receipts' },
   { value: 'import', label: 'Import' },
   { value: 'transaction-review', label: 'Review transactions' },
   { value: 'sync-overview', label: 'Sync' },
+  { value: 'settings', label: 'Settings' },
 ];
 
 // 'upload'/'review'/'submitted' are sub-flows of the receipts tab — they
@@ -49,6 +52,8 @@ function viewForTab(value: NavTabValue): View {
       return { name: 'transaction-review' };
     case 'sync-overview':
       return { name: 'sync-overview' };
+    case 'settings':
+      return { name: 'settings' };
   }
 }
 
@@ -82,6 +87,8 @@ export function App() {
     page = <TransactionReviewPage onSelectReceipt={(receiptId) => setView({ name: 'review', receiptId })} />;
   } else if (view.name === 'sync-overview') {
     page = <SyncOverviewPage />;
+  } else if (view.name === 'settings') {
+    page = <RulesSettingsPage />;
   } else {
     page = (
       <ReviewQueuePage onUpload={() => setView({ name: 'upload' })} onSelect={(receiptId) => setView({ name: 'review', receiptId })} />

@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CsvConverterFactory, ImportFileToLines } from '@mint-csv-converter/core';
+import { ImportFileToLines } from '@mint-csv-converter/core';
+import { loadDbBackedFactory } from '@mint-csv-converter/automation';
 import type { PrismaClient } from '@mint-csv-converter/receipts';
 
 export interface ImportResult {
@@ -51,7 +52,7 @@ export class ImportJobs {
 }
 
 async function importCsv(prisma: PrismaClient, csvPath: string, payer: string): Promise<ImportResult> {
-  const factory = new CsvConverterFactory();
+  const factory = await loadDbBackedFactory(prisma);
   const rows = new ImportFileToLines(csvPath).getResults().slice(1); // skip header
 
   let excludedCount = 0;

@@ -11,6 +11,14 @@ import {
 import {
   aggregateSplits,
   renderPdfPages,
+  listPayerExclusionRules,
+  createPayerExclusionRule,
+  deletePayerExclusionRule,
+  createPayerExclusionRuleSchema,
+  listVariableSplitRules,
+  createVariableSplitRule,
+  deleteVariableSplitRule,
+  createVariableSplitRuleSchema,
   type AggregateLine,
   type PrismaClient,
   type VisionChatClient,
@@ -177,6 +185,34 @@ export function createApp(deps: AppDeps) {
     .get('/api/transactions', async (c) => {
       const transactions = await listImportedTransactions(deps.prisma);
       return c.json(transactions);
+    })
+
+    // DB-backed replacement for CsvConverterFactory's hardcoded
+    // defaultPersonalExclusions/defaultSplitRulesDict.VARIABLE — see
+    // automation's loadDbBackedFactory, which both this package's
+    // importJobs.ts and automation's sync.ts read these same rows through.
+    .get('/api/exclusion-rules', async (c) => c.json(await listPayerExclusionRules(deps.prisma)))
+
+    .post('/api/exclusion-rules', zValidator('json', createPayerExclusionRuleSchema), async (c) => {
+      const rule = await createPayerExclusionRule(deps.prisma, c.req.valid('json'));
+      return c.json(rule);
+    })
+
+    .delete('/api/exclusion-rules/:id', async (c) => {
+      await deletePayerExclusionRule(deps.prisma, parseIntParam(c.req.param('id')));
+      return c.json({ ok: true });
+    })
+
+    .get('/api/variable-split-rules', async (c) => c.json(await listVariableSplitRules(deps.prisma)))
+
+    .post('/api/variable-split-rules', zValidator('json', createVariableSplitRuleSchema), async (c) => {
+      const rule = await createVariableSplitRule(deps.prisma, c.req.valid('json'));
+      return c.json(rule);
+    })
+
+    .delete('/api/variable-split-rules/:id', async (c) => {
+      await deleteVariableSplitRule(deps.prisma, parseIntParam(c.req.param('id')));
+      return c.json({ ok: true });
     })
 
     // A pure preview — zero Sheets calls — of what "Run sync" would do.

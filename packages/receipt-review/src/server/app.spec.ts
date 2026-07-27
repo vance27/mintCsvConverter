@@ -241,6 +241,66 @@ describe('app', () => {
     expect(await prisma.importedTransaction.count()).toBe(1);
   });
 
+  it('CRUDs payer exclusion rules and has them take effect on the next import', async () => {
+    const { app } = setup();
+
+    const listRes = await app.request('/api/exclusion-rules');
+    expect(listRes.status).toBe(200);
+    const seeded = (await listRes.json()) as { id: number; payer: string; pattern: string }[];
+    expect(seeded.some((r) => r.payer === 'BRIAN' && r.pattern === 'CITI CARD')).toBe(true);
+
+    const createRes = await app.request('/api/exclusion-rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payer: 'brian', pattern: 'TEST EXCLUSION VENDOR' }),
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { id: number; payer: string };
+    expect(created.payer).toBe('BRIAN'); // stored uppercased regardless of input casing
+
+    const csv = ['Status,Date,Description,Debit,Credit,Member Name', 'Cleared,06/20/2026,TEST EXCLUSION VENDOR PURCHASE,25.00,,BRIAN K VANCE'].join(
+      '\n',
+    );
+    const formData = new FormData();
+    formData.append('files', new Blob([csv]), 'export.csv');
+    formData.append('payer', 'Brian');
+    const importRes = await app.request('/api/imports', { method: 'POST', body: formData });
+    const { jobIds } = (await importRes.json()) as { jobIds: string[] };
+    let job: { status: string; result?: { excludedCount: number } } | undefined;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      job = (await (await app.request(`/api/imports/${jobIds[0]}`)).json()) as typeof job;
+      if (job?.status !== 'pending') break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(job?.result).toMatchObject({ excludedCount: 1 });
+
+    const deleteRes = await app.request(`/api/exclusion-rules/${created.id}`, { method: 'DELETE' });
+    expect(deleteRes.status).toBe(200);
+    const afterDelete = (await (await app.request('/api/exclusion-rules')).json()) as { id: number }[];
+    expect(afterDelete.some((r) => r.id === created.id)).toBe(false);
+  });
+
+  it('CRUDs variable-split vendor rules', async () => {
+    const { app } = setup();
+
+    const seeded = (await (await app.request('/api/variable-split-rules')).json()) as { id: number; pattern: string }[];
+    expect(seeded.some((r) => r.pattern === 'Costco')).toBe(true);
+
+    const createRes = await app.request('/api/variable-split-rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pattern: 'Whole Foods' }),
+    });
+    expect(createRes.status).toBe(200);
+    const created = (await createRes.json()) as { id: number; pattern: string };
+    expect(created.pattern).toBe('Whole Foods');
+
+    const deleteRes = await app.request(`/api/variable-split-rules/${created.id}`, { method: 'DELETE' });
+    expect(deleteRes.status).toBe(200);
+    const afterDelete = (await (await app.request('/api/variable-split-rules')).json()) as { id: number }[];
+    expect(afterDelete.some((r) => r.id === created.id)).toBe(false);
+  });
+
   it('matches a Variably transaction to its receipt, submitted or not, and leaves Equally/unmatched ones alone', async () => {
     const { app } = setup();
     const seeded = await seedBasicReceipt(prisma); // Costco, Brian, cardAmount 20, purchaseDate 2026-07-01, EXTRACTED
