@@ -123,6 +123,23 @@ describe('app', () => {
     expect(good.status).toBe(200);
   });
 
+  it('deletes a line item and reflects the recomputed total, both in the response and on refetch', async () => {
+    const { app } = setup();
+    const seeded = await seedBasicReceipt(prisma);
+
+    const res = await app.request(`/api/receipts/${seeded.receiptId}/line-items/${seeded.lineItemIds[0]}`, { method: 'DELETE' });
+    expect(res.status).toBe(200);
+    const detail = (await res.json()) as { lineItems: { id: number }[]; total: number };
+    expect(detail.lineItems).toHaveLength(1);
+    expect(detail.total).toBe(10);
+
+    const refetched = (await (await app.request(`/api/receipts/${seeded.receiptId}`)).json()) as typeof detail;
+    expect(refetched).toEqual(detail);
+
+    const listed = (await (await app.request('/api/receipts')).json()) as { id: number; total: number }[];
+    expect(listed.find((r) => r.id === seeded.receiptId)?.total).toBe(10);
+  });
+
   it('rejects submit until every line is reviewed, then succeeds', async () => {
     const { app } = setup();
     const seeded = await seedBasicReceipt(prisma);

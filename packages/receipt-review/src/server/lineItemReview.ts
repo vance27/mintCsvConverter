@@ -60,3 +60,17 @@ export async function updateLineItemSplits(
     await recomputeReceiptTotals(prisma, lineItem.receiptId);
   }
 }
+
+/**
+ * Removes an incorrectly-extracted line item entirely (e.g. a Costco
+ * discount-reference line misread as its own item) and recomputes the
+ * receipt's totals against what remains. LineItemSplit rows cascade via the
+ * schema's onDelete: Cascade — nothing else references a LineItem. Allowed
+ * regardless of Receipt.status, including SUBMITTED, consistent with this
+ * app's "resubmit updates in place, latest correction wins" philosophy.
+ */
+export async function deleteLineItem(prisma: PrismaClient, lineItemId: number): Promise<void> {
+  const lineItem = await prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } });
+  await prisma.lineItem.delete({ where: { id: lineItemId } });
+  await recomputeReceiptTotals(prisma, lineItem.receiptId);
+}

@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { createTestDb } from '@mint-csv-converter/receipts/dist/testing/testDb.js';
 import type { PrismaClient } from '@mint-csv-converter/receipts';
-import { SplitsSumError, updateLineItemSplits } from './lineItemReview.js';
+import { SplitsSumError, updateLineItemSplits, deleteLineItem } from './lineItemReview.js';
 import { seedBasicReceipt } from './testing/fixtures.js';
 
 describe('updateLineItemSplits', () => {
@@ -79,5 +79,30 @@ describe('updateLineItemSplits', () => {
     const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: seeded.receiptId } });
     expect(receipt.total).toBe(17);
     expect(receipt.reconciled).toBe(false); // tender still 20, total now 17
+  });
+});
+
+describe('deleteLineItem', () => {
+  let prisma: PrismaClient;
+  let cleanup: () => void;
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('removes the line item and its splits, and recomputes Receipt totals from what remains', async () => {
+    ({ prisma, cleanup } = createTestDb());
+    const seeded = await seedBasicReceipt(prisma);
+    // seedBasicReceipt: two $10 line items, subtotal/total both 20.
+
+    await deleteLineItem(prisma, seeded.lineItemIds[0]);
+
+    await expect(prisma.lineItem.findUnique({ where: { id: seeded.lineItemIds[0] } })).resolves.toBeNull();
+    await expect(prisma.lineItemSplit.count({ where: { lineItemId: seeded.lineItemIds[0] } })).resolves.toBe(0);
+    await expect(prisma.lineItem.count({ where: { receiptId: seeded.receiptId } })).resolves.toBe(1);
+
+    const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: seeded.receiptId } });
+    expect(receipt.subtotal).toBe(10);
+    expect(receipt.total).toBe(10);
   });
 });

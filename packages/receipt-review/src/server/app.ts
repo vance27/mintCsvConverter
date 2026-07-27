@@ -42,7 +42,7 @@ import {
 } from '@mint-csv-converter/receipts';
 import { getReceiptDetail, listReceipts } from './receiptQueries.js';
 import { listImportedTransactions, toTransactionSummary } from './transactionQueries.js';
-import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from './lineItemReview.js';
+import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema, deleteLineItem } from './lineItemReview.js';
 import { TransactionSyncedError, updateImportedTransaction, updateImportedTransactionSchema } from './transactionMutations.js';
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
 import { previewCsvImport } from './csvPreview.js';
@@ -150,6 +150,20 @@ export function createApp(deps: AppDeps) {
         throw error;
       }
       const receiptId = (await deps.prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } })).receiptId;
+      const detail = await getReceiptDetail(deps.prisma, receiptId);
+      if (!detail) {
+        throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
+      }
+      return c.json(detail);
+    })
+
+    // Removes an incorrectly-extracted line item entirely (e.g. a
+    // misattributed Costco discount-reference line) and returns the
+    // receipt's totals recomputed against what remains.
+    .delete('/api/receipts/:id/line-items/:lineItemId', async (c) => {
+      const lineItemId = parseIntParam(c.req.param('lineItemId'));
+      await deleteLineItem(deps.prisma, lineItemId);
+      const receiptId = parseIntParam(c.req.param('id'));
       const detail = await getReceiptDetail(deps.prisma, receiptId);
       if (!detail) {
         throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
