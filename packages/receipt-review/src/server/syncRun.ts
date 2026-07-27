@@ -80,11 +80,14 @@ export async function runSyncOverview(deps: RunSyncDeps): Promise<SyncRunResult>
     const rows = txs.map((t) => [`${t.description} ${t.date}`, t.payer, t.amount.toFixed(2), t.splitType]);
     const rowPercentages = rows.map((row, i) => (txs[i].splitType === 'Variably' ? matchManifestEntry(row, payerName, manifestEntries) : null));
 
+    console.log(`[sync] ${payerName} ${periodLabel}: syncing ${txs.length} row(s)`);
     try {
       await sheetsClient.addTransactionsForPeriod({ payerName, periodLabel, rows, rowPercentages });
+      console.log(`[sync] ${payerName} ${periodLabel}: synced`);
       periodResults.push({ payerName, periodLabel, rowCount: txs.length, status: 'SYNCED' });
       syncedTransactionIds.push(...txs.map((t) => t.id));
     } catch (error) {
+      console.error(`[sync] ${payerName} ${periodLabel}: failed —`, error instanceof Error ? error.message : error);
       periodResults.push({
         payerName,
         periodLabel,

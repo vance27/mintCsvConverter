@@ -2,6 +2,7 @@ import { readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hono } from 'hono';
+import { logger } from 'hono/logger';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
@@ -114,6 +115,8 @@ export function createApp(deps: AppDeps) {
   });
 
   const app = new Hono()
+    .use(logger())
+
     .get('/api/health', (c) => c.json({ ok: true }))
 
     // Exposes just enough server-side config for the client to build the

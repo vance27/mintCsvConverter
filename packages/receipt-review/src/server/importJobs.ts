@@ -38,9 +38,16 @@ export class ImportJobs {
     const csvPath = join(dir, filename);
     writeFileSync(csvPath, csvBuffer);
 
+    console.log(`[import:${jobId}] starting ${filename}`);
     importCsv(this.deps.prisma, csvPath, filename, options.payer, options.profileId)
-      .then((result) => this.jobs.set(jobId, { status: 'done', result }))
+      .then((result) => {
+        console.log(
+          `[import:${jobId}] done — imported=${result.importedCount} skipped=${result.skippedDuplicateCount} excluded=${result.excludedCount}`,
+        );
+        this.jobs.set(jobId, { status: 'done', result });
+      })
       .catch((error: unknown) => {
+        console.error(`[import:${jobId}] failed:`, error instanceof Error ? error.message : error);
         this.jobs.set(jobId, { status: 'error', message: error instanceof Error ? error.message : String(error) });
       });
 

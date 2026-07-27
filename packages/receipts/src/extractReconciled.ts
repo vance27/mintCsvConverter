@@ -30,12 +30,19 @@ export async function extractReconciledReceipt(
   let last: { receipt: ExtractedReceipt; reconcile: ReconcileResult } | undefined;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    console.log(`[extract] attempt ${attempt}/${maxAttempts}`);
     const receipt = await extractReceipt(pdfPath, client, options);
     const reconcileResult = reconcile(receipt);
     last = { receipt, reconcile: reconcileResult };
     if (reconcileResult.reconciled) {
+      console.log(`[extract] attempt ${attempt} reconciled`);
       return { ...last, attempts: attempt };
     }
+    console.log(
+      `[extract] attempt ${attempt} did not reconcile — subtotalDelta=${reconcileResult.subtotalDelta.toFixed(2)} totalDelta=${reconcileResult.totalDelta.toFixed(2)}${
+        reconcileResult.tenderDelta === null ? '' : ` tenderDelta=${reconcileResult.tenderDelta.toFixed(2)}`
+      }`,
+    );
   }
 
   return { ...last!, attempts: maxAttempts };
