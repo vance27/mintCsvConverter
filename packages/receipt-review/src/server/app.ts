@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
+import { defaultSheetsClient, type SheetsClient } from '@mint-csv-converter/automation';
 import {
   aggregateSplits,
   renderPdfPages,
@@ -15,6 +16,8 @@ import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
 import { UploadJobs } from './uploadJobs.js';
 import { ImportJobs } from './importJobs.js';
+import { buildSyncOverview, runSyncOverview, listSyncRuns } from './syncRun.js';
+import { SyncRunJobs } from './syncRunJobs.js';
 import { generateAuditHtml, writeAuditHtml, defaultAuditDir } from './auditReport.js';
 
 export interface AppDeps {
@@ -23,6 +26,8 @@ export interface AppDeps {
   /** Overrides for tests only — default to the real ~/.config/mint-csv-converter/ locations. */
   receiptsBaseDir?: string;
   submitOptions?: SubmitReceiptOptions;
+  /** Override for tests only — defaults to automation's real defaultSheetsClient (reads env vars + the saved OAuth token). */
+  buildSheetsClient?: () => Pick<SheetsClient, 'addTransactionsForPeriod'>;
 }
 
 // Renders on demand and caches per-process only — each receipt is reviewed
@@ -41,6 +46,9 @@ function parseIntParam(value: string): number {
 export function createApp(deps: AppDeps) {
   const uploadJobs = new UploadJobs({ prisma: deps.prisma, client: deps.client, receiptsBaseDir: deps.receiptsBaseDir });
   const importJobs = new ImportJobs({ prisma: deps.prisma });
+  const syncRunJobs = new SyncRunJobs({
+    run: () => runSyncOverview({ prisma: deps.prisma, buildSheetsClient: deps.buildSheetsClient ?? defaultSheetsClient }),
+  });
 
   const app = new Hono()
     .get('/api/health', (c) => c.json({ ok: true }))
@@ -147,6 +155,27 @@ export function createApp(deps: AppDeps) {
     .get('/api/transactions', async (c) => {
       const transactions = await listImportedTransactions(deps.prisma);
       return c.json(transactions);
+    })
+
+    // A pure preview — zero Sheets calls — of what "Run sync" would do.
+    .get('/api/sync-overview', async (c) => {
+      const overview = await buildSyncOverview(deps.prisma);
+      return c.json(overview);
+    })
+
+    // Kicks off the actual sync (single-flight — a no-op if one is already
+    // running). Live progress via /api/sync-runs/current; the durable
+    // record lands in the CsvSyncRun history (/api/sync-runs) once done.
+    .post('/api/sync-runs', (c) => {
+      syncRunJobs.start();
+      return c.json({ started: true });
+    })
+
+    .get('/api/sync-runs/current', (c) => c.json(syncRunJobs.get()))
+
+    .get('/api/sync-runs', async (c) => {
+      const runs = await listSyncRuns(deps.prisma);
+      return c.json(runs);
     })
 
     .get('/api/receipts/:id/source.pdf', async (c) => {

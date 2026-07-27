@@ -197,6 +197,10 @@ model CsvSyncRun {
   status    CsvSyncRunStatus
   // JSON: { payerName, periodLabel, rowCount, status: 'SYNCED'|'FAILED', errorMessage? }[]
   periodResultsJson String
+  // Set only for a pre-flight failure (e.g. no saved OAuth token) that
+  // happened before any period could be attempted — status ERROR, empty
+  // periodResultsJson.
+  errorMessage String?
 
   transactions ImportedTransaction[]
 }

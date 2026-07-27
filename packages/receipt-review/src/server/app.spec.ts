@@ -31,7 +31,7 @@ describe('app', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  function setup() {
+  function setup(overrides: Partial<Parameters<typeof createApp>[0]> = {}) {
     ({ prisma, cleanup } = createTestDb());
     dir = mkdtempSync(join(tmpdir(), 'app-test-'));
     const app = createApp({
@@ -39,6 +39,7 @@ describe('app', () => {
       client: fakeClient({}),
       receiptsBaseDir: join(dir, 'retained'),
       submitOptions: { manifestPath: join(dir, 'manifest.json'), auditDir: join(dir, 'audits') },
+      ...overrides,
     });
     return { app };
   }
@@ -271,5 +272,113 @@ describe('app', () => {
     await prisma.receipt.update({ where: { id: seeded.receiptId }, data: { status: 'SUBMITTED', submittedAt: new Date() } });
     const afterSubmit = (await (await app.request('/api/transactions')).json()) as typeof transactions;
     expect(afterSubmit.find((t) => t.description === 'Costco Wholesale')?.receiptMatch?.status).toBe('SUBMITTED');
+  });
+
+  type SyncRunJobJson = { status: string; result?: unknown; message?: string } | null;
+
+  async function pollSyncRunCurrent(app: ReturnType<typeof createApp>): Promise<SyncRunJobJson> {
+    let job: SyncRunJobJson = null;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const res = await app.request('/api/sync-runs/current');
+      job = (await res.json()) as SyncRunJobJson;
+      if (job?.status !== 'pending') {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return job;
+  }
+
+  it('previews and then runs a sync, marking synced transactions and recording history', async () => {
+    const addTransactionsForPeriod = vi.fn(async () => ({ sheetName: 'x', rowsAdded: 1 }));
+    const { app } = setup({ buildSheetsClient: () => ({ addTransactionsForPeriod }) });
+
+    await prisma.importedTransaction.createMany({
+      data: [
+        { payer: 'Brian', date: '06/20/2026', description: 'Chipotle', amount: 25, splitType: 'Equally' },
+        { payer: 'Brian', date: '07/02/2026', description: 'Chick-fil-A', amount: 12, splitType: 'Equally' },
+      ],
+    });
+
+    const overview = (await (await app.request('/api/sync-overview')).json()) as { totalRows: number; groups: { payer: string; periodLabel: string; rowCount: number }[] };
+    expect(overview.totalRows).toBe(2);
+    expect(overview.groups.sort((a, b) => a.periodLabel.localeCompare(b.periodLabel))).toEqual([
+      { payer: 'Brian', periodLabel: '06/26', rowCount: 1 },
+      { payer: 'Brian', periodLabel: '07/26', rowCount: 1 },
+    ]);
+
+    const startRes = await app.request('/api/sync-runs', { method: 'POST' });
+    expect(startRes.status).toBe(200);
+
+    const job = await pollSyncRunCurrent(app);
+    expect(job?.status).toBe('done');
+
+    const runs = (await (await app.request('/api/sync-runs')).json()) as { status: string; periodResults: { status: string }[] }[];
+    expect(runs).toHaveLength(1);
+    expect(runs[0].status).toBe('DONE');
+    expect(runs[0].periodResults.every((p) => p.status === 'SYNCED')).toBe(true);
+
+    const staged = await prisma.importedTransaction.findMany();
+    expect(staged.every((t) => t.syncedAt !== null)).toBe(true);
+    expect(addTransactionsForPeriod).toHaveBeenCalledTimes(2);
+
+    const overviewAfter = (await (await app.request('/api/sync-overview')).json()) as { totalRows: number };
+    expect(overviewAfter.totalRows).toBe(0);
+  });
+
+  it('records a PARTIAL run when one tab fails, and only retries the failed one next time', async () => {
+    const addTransactionsForPeriod = vi.fn(async (request: { periodLabel: string }) => {
+      if (request.periodLabel === '07/26') {
+        throw new Error('Sheets API boom');
+      }
+      return { sheetName: 'x', rowsAdded: 1 };
+    });
+    const { app } = setup({ buildSheetsClient: () => ({ addTransactionsForPeriod }) });
+
+    await prisma.importedTransaction.createMany({
+      data: [
+        { payer: 'Brian', date: '06/20/2026', description: 'Chipotle', amount: 25, splitType: 'Equally' },
+        { payer: 'Brian', date: '07/02/2026', description: 'Chick-fil-A', amount: 12, splitType: 'Equally' },
+      ],
+    });
+
+    await app.request('/api/sync-runs', { method: 'POST' });
+    await pollSyncRunCurrent(app);
+
+    const runs = (await (await app.request('/api/sync-runs')).json()) as { status: string; periodResults: { periodLabel: string; status: string }[] }[];
+    expect(runs[0].status).toBe('PARTIAL');
+    expect(runs[0].periodResults.find((p) => p.periodLabel === '06/26')?.status).toBe('SYNCED');
+    expect(runs[0].periodResults.find((p) => p.periodLabel === '07/26')?.status).toBe('FAILED');
+
+    const overviewAfter = (await (await app.request('/api/sync-overview')).json()) as { totalRows: number };
+    expect(overviewAfter.totalRows).toBe(1); // only the failed group's transaction is still unsynced
+
+    // Fix the fake and retry — only the previously-failed tab should sync now.
+    addTransactionsForPeriod.mockImplementation(async () => ({ sheetName: 'x', rowsAdded: 1 }));
+    await app.request('/api/sync-runs', { method: 'POST' });
+    await pollSyncRunCurrent(app);
+
+    const runsAfterRetry = (await (await app.request('/api/sync-runs')).json()) as { status: string }[];
+    expect(runsAfterRetry).toHaveLength(2);
+    expect(runsAfterRetry[0].status).toBe('DONE');
+    expect(await prisma.importedTransaction.count({ where: { syncedAt: null } })).toBe(0);
+  });
+
+  it('records an ERROR run when the Sheets client cannot even be built', async () => {
+    const { app } = setup({
+      buildSheetsClient: () => {
+        throw new Error('No saved Google OAuth token');
+      },
+    });
+    await prisma.importedTransaction.create({ data: { payer: 'Brian', date: '06/20/2026', description: 'Chipotle', amount: 25, splitType: 'Equally' } });
+
+    await app.request('/api/sync-runs', { method: 'POST' });
+    const job = await pollSyncRunCurrent(app);
+    expect(job?.status).toBe('done'); // the failure is recorded as an ERROR-status run, not a job-level error
+
+    const runs = (await (await app.request('/api/sync-runs')).json()) as { status: string; errorMessage: string | null }[];
+    expect(runs[0].status).toBe('ERROR');
+    expect(runs[0].errorMessage).toContain('No saved Google OAuth token');
+    expect(await prisma.importedTransaction.count({ where: { syncedAt: { not: null } } })).toBe(0);
   });
 });
