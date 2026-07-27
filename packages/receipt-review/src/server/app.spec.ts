@@ -158,7 +158,22 @@ describe('app', () => {
     expect(await res.text()).toContain('%PDF-1.4');
   });
 
-  it('uploads a receipt and reports job completion via polling', async () => {
+  type ReceiptStatusJson = { id: number; status: string; originalFilename: string | null; queuePosition: number | null };
+
+  async function pollReceiptStatus(app: ReturnType<typeof createApp>, receiptId: number, until: string): Promise<ReceiptStatusJson> {
+    let receipt: ReceiptStatusJson | undefined;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const receipts = (await (await app.request('/api/receipts')).json()) as ReceiptStatusJson[];
+      receipt = receipts.find((r) => r.id === receiptId);
+      if (receipt?.status === until) {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    return receipt!;
+  }
+
+  it('uploads a receipt: it appears immediately as QUEUED, then transitions to EXTRACTED in place', async () => {
     const receiptJson = {
       store: 'Costco',
       purchaseDate: '2026-07-24',
@@ -180,21 +195,65 @@ describe('app', () => {
 
     const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
     expect(uploadRes.status).toBe(200);
-    const { jobIds } = (await uploadRes.json()) as { jobIds: string[] };
-    expect(jobIds).toHaveLength(1);
+    const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
+    expect(receiptIds).toHaveLength(1);
 
-    let job: { status: string; result?: { receiptId: number } } | undefined;
-    for (let attempt = 0; attempt < 50; attempt++) {
-      const res = await app.request(`/api/uploads/${jobIds[0]}`);
-      job = (await res.json()) as typeof job;
-      if (job?.status !== 'pending') {
-        break;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
+    const immediately = (await (await app.request('/api/receipts')).json()) as ReceiptStatusJson[];
+    const queuedRow = immediately.find((r) => r.id === receiptIds[0]);
+    expect(queuedRow?.status).toBe('QUEUED');
+    expect(queuedRow?.originalFilename).toBe('upload.pdf');
 
-    expect(job?.status).toBe('done');
-    expect(job?.result?.receiptId).toBeGreaterThan(0);
+    const finished = await pollReceiptStatus(app, receiptIds[0], 'EXTRACTED');
+    expect(finished.status).toBe('EXTRACTED');
+    // Lets the queue's trailing "anything else queued?" check settle before
+    // afterEach tears down this test's temp DB out from under it.
+    await app.uploadQueue.waitUntilIdle();
+  });
+
+  it('retries a FAILED upload without re-uploading the file', async () => {
+    ({ prisma, cleanup } = createTestDb());
+    dir = mkdtempSync(join(tmpdir(), 'app-test-'));
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const failingClient: VisionChatClient & { chat: ReturnType<typeof vi.fn<VisionChatClient['chat']>> } = {
+      chat: vi.fn(async () => {
+        throw new Error('Ollama unreachable');
+      }),
+    };
+    const app = createApp({ prisma, client: failingClient, receiptsBaseDir: join(dir, 'retained') });
+
+    const pdfPath = writeFixturePdf(dir, 'fails.pdf');
+    const formData = new FormData();
+    formData.append('files', new Blob([readFileSync(pdfPath)]), 'fails.pdf');
+    formData.append('store', 'Costco');
+    formData.append('payer', 'Brian');
+
+    const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
+    const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
+
+    const failed = await pollReceiptStatus(app, receiptIds[0], 'FAILED');
+    expect(failed.status).toBe('FAILED');
+
+    failingClient.chat.mockImplementation(async () => ({
+      message: {
+        content: JSON.stringify({
+          store: 'Costco',
+          purchaseDate: '2026-07-24',
+          subtotal: 5,
+          tax: 0,
+          total: 5,
+          items: [{ itemCode: '1', rawName: 'ITEM', quantity: 1, unitPrice: 5, lineTotal: 5, taxable: false, discountAmount: 0 }],
+        }),
+      },
+    }));
+
+    const retryRes = await app.request(`/api/receipts/${receiptIds[0]}/retry`, { method: 'POST' });
+    expect(retryRes.status).toBe(200);
+
+    const retried = await pollReceiptStatus(app, receiptIds[0], 'EXTRACTED');
+    expect(retried.status).toBe('EXTRACTED');
+    // Lets the queue's trailing "anything else queued?" check settle before
+    // afterEach tears down this test's temp DB out from under it.
+    await app.uploadQueue.waitUntilIdle();
   });
 
   it('imports a CSV export, staging transactions without touching Sheets', async () => {

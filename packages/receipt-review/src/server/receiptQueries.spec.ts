@@ -58,6 +58,7 @@ describe('receiptQueries', () => {
         tax: 0,
         total: 10,
         cardAmount: 10,
+        status: 'EXTRACTED',
         reconciled: true,
       },
     });
@@ -119,5 +120,64 @@ describe('receiptQueries', () => {
   it('returns null for a nonexistent receipt', async () => {
     ({ prisma, cleanup } = createTestDb());
     expect(await getReceiptDetail(prisma, 999999)).toBeNull();
+  });
+
+  it('orders FAILED, then EXTRACTING, then QUEUED (oldest first), before needs-review and SUBMITTED', async () => {
+    ({ prisma, cleanup } = createTestDb());
+    const store = await prisma.store.create({ data: { name: 'Costco' } });
+    const brian = await prisma.participant.create({ data: { name: 'Brian' } });
+
+    async function placeholder(status: 'QUEUED' | 'EXTRACTING' | 'FAILED', sha: string, filename: string) {
+      return prisma.receipt.create({
+        data: { storeId: store.id, payerId: brian.id, sourceSha256: sha, sourcePath: '/tmp/x.pdf', originalFilename: filename, status },
+      });
+    }
+
+    const submitted = await prisma.receipt.create({
+      data: {
+        storeId: store.id,
+        payerId: brian.id,
+        sourceSha256: 'submitted',
+        sourcePath: '/tmp/s.pdf',
+        purchaseDate: new Date('2026-07-01'),
+        subtotal: 1,
+        tax: 0,
+        total: 1,
+        status: 'SUBMITTED',
+        reconciled: true,
+      },
+    });
+    const extracted = await prisma.receipt.create({
+      data: {
+        storeId: store.id,
+        payerId: brian.id,
+        sourceSha256: 'extracted',
+        sourcePath: '/tmp/e.pdf',
+        purchaseDate: new Date('2026-07-01'),
+        subtotal: 1,
+        tax: 0,
+        total: 1,
+        status: 'EXTRACTED',
+        reconciled: true,
+      },
+    });
+    const queuedFirst = await placeholder('QUEUED', 'q1', 'first.pdf');
+    const queuedSecond = await placeholder('QUEUED', 'q2', 'second.pdf');
+    const extracting = await placeholder('EXTRACTING', 'x1', 'extracting.pdf');
+    const failed = await prisma.receipt.update({
+      where: { id: (await placeholder('FAILED', 'f1', 'failed.pdf')).id },
+      data: { extractionError: 'Ollama unreachable' },
+    });
+
+    const results = await listReceipts(prisma);
+
+    expect(results.map((r) => r.id)).toEqual([failed.id, extracting.id, queuedFirst.id, queuedSecond.id, extracted.id, submitted.id]);
+    expect(results.find((r) => r.id === failed.id)?.extractionError).toBe('Ollama unreachable');
+    expect(results.find((r) => r.id === queuedFirst.id)?.queuePosition).toBe(1);
+    expect(results.find((r) => r.id === queuedSecond.id)?.queuePosition).toBe(2);
+    expect(results.find((r) => r.id === extracting.id)?.queuePosition).toBeNull();
+    expect(results.find((r) => r.id === queuedFirst.id)?.originalFilename).toBe('first.pdf');
+    expect(results.find((r) => r.id === queuedFirst.id)?.purchaseDate).toBeNull();
+    expect(results.find((r) => r.id === queuedFirst.id)?.total).toBeNull();
   });
 });

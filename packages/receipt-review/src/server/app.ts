@@ -43,7 +43,7 @@ import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema } from
 import { TransactionSyncedError, updateImportedTransaction, updateImportedTransactionSchema } from './transactionMutations.js';
 import { UnresolvedLineItemsError, submitReceipt, type SubmitReceiptOptions } from './submitReceipt.js';
 import { previewCsvImport } from './csvPreview.js';
-import { UploadJobs } from './uploadJobs.js';
+import { UploadQueue } from './uploadQueue.js';
 import { ImportJobs } from './importJobs.js';
 import { buildSyncOverview, runSyncOverview, listSyncRuns } from './syncRun.js';
 import { SyncRunJobs } from './syncRunJobs.js';
@@ -100,7 +100,8 @@ function parseIntParam(value: string): number {
 }
 
 export function createApp(deps: AppDeps) {
-  const uploadJobs = new UploadJobs({ prisma: deps.prisma, client: deps.client, receiptsBaseDir: deps.receiptsBaseDir });
+  const uploadQueue = new UploadQueue({ prisma: deps.prisma, client: deps.client, receiptsBaseDir: deps.receiptsBaseDir });
+  void uploadQueue.recoverStuckRows();
   const importJobs = new ImportJobs({ prisma: deps.prisma });
   const syncRunJobs = new SyncRunJobs({
     run: () => runSyncOverview({ prisma: deps.prisma, buildSheetsClient: deps.buildSheetsClient ?? defaultSheetsClient }),
@@ -164,6 +165,10 @@ export function createApp(deps: AppDeps) {
       }
     })
 
+    // Enqueues each file as a QUEUED Receipt row and returns immediately —
+    // GET /api/receipts is the source of truth for extraction progress from
+    // here on (no job-id polling), since every upload is now a real,
+    // durable row rather than in-memory job state.
     .post('/api/uploads', async (c) => {
       const body = await c.req.parseBody({ all: true });
       const files = ([] as File[]).concat((body['files'] ?? []) as File | File[]);
@@ -173,21 +178,22 @@ export function createApp(deps: AppDeps) {
       const store = typeof body['store'] === 'string' ? body['store'] : 'Costco';
       const payer = typeof body['payer'] === 'string' ? body['payer'] : 'Brian';
 
-      const jobIds = await Promise.all(
+      const receiptIds = await Promise.all(
         files.map(async (file) => {
           const buffer = new Uint8Array(await file.arrayBuffer());
-          return uploadJobs.start(buffer, file.name, { store, payer });
+          const { receiptId } = await uploadQueue.enqueue(buffer, file.name, { store, payer });
+          return receiptId;
         }),
       );
-      return c.json({ jobIds });
+      return c.json({ receiptIds });
     })
 
-    .get('/api/uploads/:jobId', (c) => {
-      const job = uploadJobs.get(c.req.param('jobId'));
-      if (!job) {
-        throw new HTTPException(404, { message: 'Unknown job id' });
-      }
-      return c.json(job);
+    // Re-queues a FAILED receipt for another extraction attempt without
+    // needing to re-upload the file (its PDF is already retained on disk).
+    .post('/api/receipts/:id/retry', async (c) => {
+      const id = parseIntParam(c.req.param('id'));
+      await uploadQueue.retry(id);
+      return c.json({ ok: true });
     })
 
     // Parses a raw CSV (no commitment) and tries to auto-detect a saved
@@ -384,6 +390,9 @@ export function createApp(deps: AppDeps) {
       if (!detail) {
         throw new HTTPException(404, { message: `Receipt ${id} not found` });
       }
+      if (detail.purchaseDate === null || detail.total === null) {
+        throw new HTTPException(400, { message: `Receipt ${id} hasn't finished extraction yet` });
+      }
       const participantNames = [...new Set(detail.lineItems.flatMap((li) => Object.keys(li.splits)))];
       const aggregateLines: AggregateLine[] = detail.lineItems.map((li) => ({
         lineTotal: li.lineTotal,
@@ -420,7 +429,12 @@ export function createApp(deps: AppDeps) {
     throw err;
   });
 
-  return app;
+  // Not part of the HTTP API — lets tests await the upload queue's
+  // background drain() loop (including its trailing "anything else
+  // queued?" check) before tearing down the test database, so that work
+  // never runs against an already-deleted temp DB. Also useful for a
+  // graceful shutdown in production.
+  return Object.assign(app, { uploadQueue });
 }
 
 export type AppType = ReturnType<typeof createApp>;

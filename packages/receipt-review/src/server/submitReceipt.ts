@@ -69,14 +69,18 @@ export async function submitReceipt(
     await tx.receipt.update({ where: { id: receiptId }, data: { status: ReceiptStatus.SUBMITTED, submittedAt: new Date() } });
   });
 
+  // purchaseDate/total are only null for a not-yet-extracted placeholder
+  // (QUEUED/EXTRACTING/FAILED) row — every line item above was just
+  // required to be reviewed, which is only possible once extraction has
+  // populated them, so they're never actually null by this point.
   const auditPath = writeAuditHtml(
     receipt.id,
     generateAuditHtml({
       receiptId: receipt.id,
       store: receipt.store.name,
       payer: receipt.payer.name,
-      purchaseDate: receipt.purchaseDate.toISOString().slice(0, 10),
-      total: receipt.total,
+      purchaseDate: (receipt.purchaseDate ?? receipt.createdAt).toISOString().slice(0, 10),
+      total: receipt.total ?? 0,
       lineItems: receipt.lineItems.map((lineItem) => ({
         name: lineItem.item?.displayName ?? lineItem.rawName,
         unitPrice: lineItem.unitPrice,

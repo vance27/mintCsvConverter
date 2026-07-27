@@ -103,127 +103,132 @@ export async function queueReceiptForIngest(
  */
 export async function runIngestExtraction(receiptId: number, deps: IngestDeps, options: { model?: string } = {}): Promise<IngestResult> {
   const { prisma, client } = deps;
-  const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId }, include: { store: true } });
-  await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'EXTRACTING' } });
-
-  let extracted: Awaited<ReturnType<typeof extractReconciledReceipt>>['receipt'];
-  let reconcileResult: Awaited<ReturnType<typeof extractReconciledReceipt>>['reconcile'];
-  let attempts: number;
   try {
-    ({
+    const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId }, include: { store: true } });
+    await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'EXTRACTING' } });
+
+    const {
       receipt: extracted,
       reconcile: reconcileResult,
       attempts,
-    } = await extractReconciledReceipt(receipt.sourcePath, client, { store: receipt.store.name, model: options.model }));
+    } = await extractReconciledReceipt(receipt.sourcePath, client, { store: receipt.store.name, model: options.model });
+
+    const activeParticipants = await prisma.participant.findMany({ where: { active: true }, orderBy: { id: 'asc' } });
+    if (activeParticipants.length === 0) {
+      throw new Error('No active participants configured — seed at least one Participant before ingesting.');
+    }
+
+    let newItemCount = 0;
+    const resolved: { item: Item; extractedItem: ExtractedLineItem; splitPercents: number[] }[] = [];
+    const aggregateLines: AggregateLine[] = [];
+
+    for (const extractedItem of extracted.items) {
+      const { item, isNew, splitPercents } = await resolveItem(prisma, receipt.storeId, extractedItem, activeParticipants);
+      if (isNew) {
+        newItemCount++;
+      }
+      resolved.push({ item, extractedItem, splitPercents });
+      aggregateLines.push({
+        lineTotal: extractedItem.lineTotal,
+        discountAmount: extractedItem.discountAmount,
+        splits: Object.fromEntries(activeParticipants.map((p, i) => [p.name, splitPercents[i]])),
+      });
+    }
+
+    const purchaseDate = new Date(extracted.purchaseDate);
+    const cardAmountValue = cardAmount(extracted.tenders, extracted.total);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.receipt.update({
+        where: { id: receiptId },
+        data: {
+          purchaseDate,
+          subtotal: extracted.subtotal,
+          tax: extracted.tax,
+          total: extracted.total,
+          cardAmount: cardAmountValue,
+          status: 'EXTRACTED',
+          reconciled: reconcileResult.reconciled,
+        },
+      });
+
+      if (extracted.tenders.length > 0) {
+        await tx.receiptTender.createMany({
+          data: extracted.tenders.map((tender) => ({
+            receiptId,
+            kind: tender.kind,
+            label: tender.label,
+            amount: tender.amount,
+          })),
+        });
+      }
+
+      for (const { item, extractedItem, splitPercents } of resolved) {
+        const lineItem = await tx.lineItem.create({
+          data: {
+            receiptId,
+            itemId: item.id,
+            rawItemCode: extractedItem.itemCode,
+            rawName: extractedItem.rawName,
+            unitPrice: extractedItem.unitPrice,
+            quantity: extractedItem.quantity,
+            lineTotal: extractedItem.lineTotal,
+            discountAmount: extractedItem.discountAmount,
+          },
+        });
+
+        await tx.lineItemSplit.createMany({
+          data: activeParticipants.map((participant, i) => ({
+            lineItemId: lineItem.id,
+            participantId: participant.id,
+            percent: splitPercents[i],
+          })),
+        });
+
+        await tx.priceObservation.create({
+          data: {
+            itemId: item.id,
+            receiptId,
+            unitPrice: extractedItem.unitPrice,
+            quantity: extractedItem.quantity,
+            discountAmount: extractedItem.discountAmount,
+            observedAt: purchaseDate,
+          },
+        });
+
+        await tx.item.update({ where: { id: item.id }, data: { lastSeenName: extractedItem.rawName } });
+      }
+    });
+
+    const aggregate = aggregateSplits(
+      aggregateLines,
+      activeParticipants.map((p) => p.name),
+    );
+
+    return {
+      receiptId,
+      skipped: false,
+      reconciled: reconcileResult.reconciled,
+      newItemCount,
+      aggregate,
+      cardAmount: cardAmountValue,
+      attempts,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'FAILED', extractionError: message } });
+    try {
+      // Best-effort: marking FAILED is what takes this row out of the QUEUED
+      // pool so the upload queue's drain loop doesn't pick it right back up
+      // and retry forever. If even this write fails (e.g. the DB itself is
+      // unreachable), there's nothing more to do here — the circuit breaker
+      // in UploadQueue.drain() is the backstop for that case.
+      await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'FAILED', extractionError: message } });
+    } catch {
+      // Original error below is what matters; a failure to persist FAILED
+      // status is not itself worth surfacing over that.
+    }
     throw error;
   }
-
-  const activeParticipants = await prisma.participant.findMany({ where: { active: true }, orderBy: { id: 'asc' } });
-  if (activeParticipants.length === 0) {
-    const message = 'No active participants configured — seed at least one Participant before ingesting.';
-    await prisma.receipt.update({ where: { id: receiptId }, data: { status: 'FAILED', extractionError: message } });
-    throw new Error(message);
-  }
-
-  let newItemCount = 0;
-  const resolved: { item: Item; extractedItem: ExtractedLineItem; splitPercents: number[] }[] = [];
-  const aggregateLines: AggregateLine[] = [];
-
-  for (const extractedItem of extracted.items) {
-    const { item, isNew, splitPercents } = await resolveItem(prisma, receipt.storeId, extractedItem, activeParticipants);
-    if (isNew) {
-      newItemCount++;
-    }
-    resolved.push({ item, extractedItem, splitPercents });
-    aggregateLines.push({
-      lineTotal: extractedItem.lineTotal,
-      discountAmount: extractedItem.discountAmount,
-      splits: Object.fromEntries(activeParticipants.map((p, i) => [p.name, splitPercents[i]])),
-    });
-  }
-
-  const purchaseDate = new Date(extracted.purchaseDate);
-  const cardAmountValue = cardAmount(extracted.tenders, extracted.total);
-
-  await prisma.$transaction(async (tx) => {
-    await tx.receipt.update({
-      where: { id: receiptId },
-      data: {
-        purchaseDate,
-        subtotal: extracted.subtotal,
-        tax: extracted.tax,
-        total: extracted.total,
-        cardAmount: cardAmountValue,
-        status: 'EXTRACTED',
-        reconciled: reconcileResult.reconciled,
-      },
-    });
-
-    if (extracted.tenders.length > 0) {
-      await tx.receiptTender.createMany({
-        data: extracted.tenders.map((tender) => ({
-          receiptId,
-          kind: tender.kind,
-          label: tender.label,
-          amount: tender.amount,
-        })),
-      });
-    }
-
-    for (const { item, extractedItem, splitPercents } of resolved) {
-      const lineItem = await tx.lineItem.create({
-        data: {
-          receiptId,
-          itemId: item.id,
-          rawItemCode: extractedItem.itemCode,
-          rawName: extractedItem.rawName,
-          unitPrice: extractedItem.unitPrice,
-          quantity: extractedItem.quantity,
-          lineTotal: extractedItem.lineTotal,
-          discountAmount: extractedItem.discountAmount,
-        },
-      });
-
-      await tx.lineItemSplit.createMany({
-        data: activeParticipants.map((participant, i) => ({
-          lineItemId: lineItem.id,
-          participantId: participant.id,
-          percent: splitPercents[i],
-        })),
-      });
-
-      await tx.priceObservation.create({
-        data: {
-          itemId: item.id,
-          receiptId,
-          unitPrice: extractedItem.unitPrice,
-          quantity: extractedItem.quantity,
-          discountAmount: extractedItem.discountAmount,
-          observedAt: purchaseDate,
-        },
-      });
-
-      await tx.item.update({ where: { id: item.id }, data: { lastSeenName: extractedItem.rawName } });
-    }
-  });
-
-  const aggregate = aggregateSplits(
-    aggregateLines,
-    activeParticipants.map((p) => p.name),
-  );
-
-  return {
-    receiptId,
-    skipped: false,
-    reconciled: reconcileResult.reconciled,
-    newItemCount,
-    aggregate,
-    cardAmount: cardAmountValue,
-    attempts,
-  };
 }
 
 /**

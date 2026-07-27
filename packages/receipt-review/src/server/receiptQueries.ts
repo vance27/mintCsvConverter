@@ -4,8 +4,9 @@ export interface ReceiptSummary {
   id: number;
   store: string;
   payer: string;
-  purchaseDate: string;
-  total: number;
+  /** Null for a not-yet-extracted QUEUED/EXTRACTING/FAILED row. */
+  purchaseDate: string | null;
+  total: number | null;
   cardAmount: number | null;
   reconciled: boolean;
   status: ReceiptStatus;
@@ -13,16 +14,34 @@ export interface ReceiptSummary {
   lineItemCount: number;
   /** Current dollar-weighted aggregate split (see aggregateSplits) — the even-split ingest default until reviewed. */
   aggregate: Record<string, number>;
+  /** The uploaded file's own name — shown in place of store/date for a row that hasn't been extracted yet. Null for receipts ingested before this field existed. */
+  originalFilename: string | null;
+  /** Set only when status is FAILED. */
+  extractionError: string | null;
+  /** 1-based position among other QUEUED rows, oldest first; null for any other status. */
+  queuePosition: number | null;
 }
 
+// Explicit priority instead of relying on enum-alphabetical order, now that
+// there are 5 statuses: a stuck FAILED row needs attention first, EXTRACTING
+// is worth seeing live, QUEUED next, then needs-review (EXTRACTED, itself
+// sub-sorted by reconciled/purchaseDate below), SUBMITTED last.
+const STATUS_PRIORITY: Record<ReceiptStatus, number> = {
+  [ReceiptStatus.FAILED]: 0,
+  [ReceiptStatus.EXTRACTING]: 1,
+  [ReceiptStatus.QUEUED]: 2,
+  [ReceiptStatus.EXTRACTED]: 3,
+  [ReceiptStatus.SUBMITTED]: 4,
+};
+
 /**
- * All receipts, one list: needs-review ones first (EXTRACTED sorts before
- * SUBMITTED alphabetically), then unreconciled (low-confidence) ones, then
- * oldest first.
+ * All receipts, one list: FAILED/EXTRACTING/QUEUED rows first (in that
+ * order, so a stuck upload is impossible to miss), then needs-review
+ * (EXTRACTED, unreconciled first, then oldest purchaseDate first), then
+ * SUBMITTED last.
  */
 export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary[]> {
   const receipts = await prisma.receipt.findMany({
-    orderBy: [{ status: 'asc' }, { reconciled: 'asc' }, { purchaseDate: 'asc' }],
     include: {
       store: true,
       payer: true,
@@ -30,8 +49,16 @@ export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary
       lineItems: { include: { splits: { include: { participant: true } } } },
     },
   });
-  return receipts.map((r) => {
+
+  const queuedByAge = receipts
+    .filter((r) => r.status === ReceiptStatus.QUEUED)
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const queuePositionById = new Map(queuedByAge.map((r, i) => [r.id, i + 1]));
+
+  const summaries = receipts.map((r) => {
     const participantNames = [...new Set(r.lineItems.flatMap((li) => li.splits.map((s) => s.participant.name)))];
+    // aggregateSplits over zero line items (a placeholder row) returns
+    // all-zero shares — safe, no special-casing needed here.
     const aggregateLines: AggregateLine[] = r.lineItems.map((li) => ({
       lineTotal: li.lineTotal,
       discountAmount: li.discountAmount,
@@ -41,7 +68,7 @@ export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary
       id: r.id,
       store: r.store.name,
       payer: r.payer.name,
-      purchaseDate: r.purchaseDate.toISOString(),
+      purchaseDate: r.purchaseDate ? r.purchaseDate.toISOString() : null,
       total: r.total,
       cardAmount: r.cardAmount,
       reconciled: r.reconciled,
@@ -49,7 +76,24 @@ export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary
       submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
       lineItemCount: r._count.lineItems,
       aggregate: aggregateSplits(aggregateLines, participantNames),
+      originalFilename: r.originalFilename,
+      extractionError: r.extractionError,
+      queuePosition: queuePositionById.get(r.id) ?? null,
     };
+  });
+
+  return summaries.sort((a, b) => {
+    const priorityDelta = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
+    if (priorityDelta !== 0) {
+      return priorityDelta;
+    }
+    if (a.status === ReceiptStatus.QUEUED) {
+      return (a.queuePosition ?? 0) - (b.queuePosition ?? 0);
+    }
+    if (a.reconciled !== b.reconciled) {
+      return a.reconciled ? 1 : -1;
+    }
+    return (a.purchaseDate ?? '').localeCompare(b.purchaseDate ?? '');
   });
 }
 
@@ -80,14 +124,16 @@ export interface ReceiptDetail {
   id: number;
   store: string;
   payer: string;
-  purchaseDate: string;
-  subtotal: number;
-  tax: number;
-  total: number;
+  purchaseDate: string | null;
+  subtotal: number | null;
+  tax: number | null;
+  total: number | null;
   cardAmount: number | null;
   reconciled: boolean;
   status: ReceiptStatus;
   submittedAt: string | null;
+  originalFilename: string | null;
+  extractionError: string | null;
   tenders: { kind: string; label: string; amount: number }[];
   lineItems: LineItemDetail[];
 }
@@ -152,7 +198,7 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
     id: receipt.id,
     store: receipt.store.name,
     payer: receipt.payer.name,
-    purchaseDate: receipt.purchaseDate.toISOString(),
+    purchaseDate: receipt.purchaseDate ? receipt.purchaseDate.toISOString() : null,
     subtotal: receipt.subtotal,
     tax: receipt.tax,
     total: receipt.total,
@@ -160,6 +206,8 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
     reconciled: receipt.reconciled,
     status: receipt.status,
     submittedAt: receipt.submittedAt ? receipt.submittedAt.toISOString() : null,
+    originalFilename: receipt.originalFilename,
+    extractionError: receipt.extractionError,
     tenders: receipt.tenders.map((t) => ({ kind: t.kind, label: t.label, amount: t.amount })),
     lineItems,
   };
