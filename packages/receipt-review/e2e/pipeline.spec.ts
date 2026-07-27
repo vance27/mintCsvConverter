@@ -65,9 +65,18 @@ test.describe('receipt-review pipeline', () => {
     await page.goto('/');
     await page.getByRole('tab', { name: 'Review transactions' }).click();
 
+    // Default view: most-recently-created import batch, Active status,
+    // Unsynced — both staged rows qualify, so they show up with no filter
+    // changes needed.
+    await expect(page.getByRole('combobox', { name: 'Import' })).toContainText('Brian');
     await expect(page.getByRole('cell', { name: 'Chipotle Mexican Grill' })).toBeVisible();
     await expect(page.getByRole('cell', { name: 'Costco Wholesale' })).toBeVisible();
     await expect(page.getByText('No receipt yet')).toBeVisible();
+
+    // "All imports" is also selectable from the same picker.
+    await page.getByRole('combobox', { name: 'Import' }).click();
+    await expect(page.getByRole('option', { name: 'All imports' })).toBeVisible();
+    await page.keyboard.press('Escape');
   });
 
   test('sync overview reflects the newly-staged, still-unsynced transactions', async ({ page }) => {
@@ -98,12 +107,21 @@ test.describe('receipt-review pipeline', () => {
     await costcoRow.getByRole('button', { name: 'Remove transaction' }).click();
     await expect(page.getByRole('cell', { name: 'Costco Wholesale' })).toHaveCount(0);
 
-    await page.getByRole('switch', { name: 'Show excluded/removed' }).click();
+    // Removed rows are a genuinely separate list now (not a dimmed row in
+    // the same table) — the "Active" / "Excluded & Removed" toggle switches
+    // between two independently-fetched views.
+    await page.getByRole('button', { name: 'Excluded & Removed' }).click();
     await expect(page.getByRole('cell', { name: 'Costco Wholesale' })).toBeVisible();
     await expect(page.getByText('Removed', { exact: true })).toBeVisible();
 
     await page.getByRole('row', { name: /Costco Wholesale/ }).getByRole('button', { name: 'Undo removal' }).click();
-    await expect(page.getByText('Removed', { exact: true })).toHaveCount(0);
+    // Undoing removal takes the row out of the Excluded & Removed filter
+    // entirely, so it disappears from this view rather than staying with
+    // the chip cleared.
+    await expect(page.getByRole('cell', { name: 'Costco Wholesale' })).toHaveCount(0);
+
+    await page.getByRole('button', { name: 'Active', exact: true }).click();
+    await expect(page.getByRole('cell', { name: 'Costco Wholesale' })).toBeVisible();
   });
 
   // A CSV shape with no saved CsvImportProfile — never seen before — so the
@@ -129,6 +147,15 @@ test.describe('receipt-review pipeline', () => {
     await expect(page.getByText('1 staged, 0 already staged, 0 excluded')).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('tab', { name: 'Review transactions' }).click();
+    // The new import batch is the most-recently-created one, so it's the
+    // default selection — the earlier batch's rows are scoped out until
+    // "All imports" is picked.
     await expect(page.getByRole('cell', { name: 'Target Run' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Chipotle Mexican Grill' })).toHaveCount(0);
+
+    await page.getByRole('combobox', { name: 'Import' }).click();
+    await page.getByRole('option', { name: 'All imports' }).click();
+    await expect(page.getByRole('cell', { name: 'Target Run' })).toBeVisible();
+    await expect(page.getByRole('cell', { name: 'Chipotle Mexican Grill' })).toBeVisible();
   });
 });
