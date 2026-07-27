@@ -381,4 +381,52 @@ describe('app', () => {
     expect(runs[0].errorMessage).toContain('No saved Google OAuth token');
     expect(await prisma.importedTransaction.count({ where: { syncedAt: { not: null } } })).toBe(0);
   });
+
+  it('reports Google auth connection status and runs the reauthorize flow', async () => {
+    let connected = false;
+    const runAuthorizeFlow = vi.fn(async () => {
+      connected = true;
+    });
+    const { app } = setup({ runAuthorizeFlow, hasSavedCredentials: () => connected });
+
+    const before = (await (await app.request('/api/google-auth/status')).json()) as { connected: boolean; job: unknown };
+    expect(before).toEqual({ connected: false, job: null });
+
+    const startRes = await app.request('/api/google-auth/reauthorize', { method: 'POST' });
+    expect(startRes.status).toBe(200);
+
+    let status: { connected: boolean; job: { status: string } | null } | undefined;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      status = (await (await app.request('/api/google-auth/status')).json()) as typeof status;
+      if (status?.job?.status !== 'pending') {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    expect(status?.job).toEqual({ status: 'done' });
+    expect(status?.connected).toBe(true);
+    expect(runAuthorizeFlow).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces a failed reauthorize attempt', async () => {
+    const runAuthorizeFlow = vi.fn(async () => {
+      throw new Error('User closed the consent screen');
+    });
+    const { app } = setup({ runAuthorizeFlow, hasSavedCredentials: () => false });
+
+    await app.request('/api/google-auth/reauthorize', { method: 'POST' });
+
+    let status: { connected: boolean; job: { status: string; message?: string } | null } | undefined;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      status = (await (await app.request('/api/google-auth/status')).json()) as typeof status;
+      if (status?.job?.status !== 'pending') {
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+
+    expect(status?.job).toEqual({ status: 'error', message: 'User closed the consent screen' });
+    expect(status?.connected).toBe(false);
+  });
 });

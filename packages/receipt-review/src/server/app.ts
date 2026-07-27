@@ -2,7 +2,12 @@ import { readFileSync } from 'node:fs';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { zValidator } from '@hono/zod-validator';
-import { defaultSheetsClient, type SheetsClient } from '@mint-csv-converter/automation';
+import {
+  defaultSheetsClient,
+  hasSavedCredentials as automationHasSavedCredentials,
+  runAuthorizeFlow as automationRunAuthorizeFlow,
+  type SheetsClient,
+} from '@mint-csv-converter/automation';
 import {
   aggregateSplits,
   renderPdfPages,
@@ -18,6 +23,7 @@ import { UploadJobs } from './uploadJobs.js';
 import { ImportJobs } from './importJobs.js';
 import { buildSyncOverview, runSyncOverview, listSyncRuns } from './syncRun.js';
 import { SyncRunJobs } from './syncRunJobs.js';
+import { GoogleAuthJobs } from './googleAuthJobs.js';
 import { generateAuditHtml, writeAuditHtml, defaultAuditDir } from './auditReport.js';
 
 export interface AppDeps {
@@ -28,6 +34,18 @@ export interface AppDeps {
   submitOptions?: SubmitReceiptOptions;
   /** Override for tests only — defaults to automation's real defaultSheetsClient (reads env vars + the saved OAuth token). */
   buildSheetsClient?: () => Pick<SheetsClient, 'addTransactionsForPeriod'>;
+  /** Overrides for tests only — default to automation's real runAuthorizeFlow/hasSavedCredentials. */
+  runAuthorizeFlow?: () => Promise<void>;
+  hasSavedCredentials?: () => boolean;
+}
+
+async function defaultRunAuthorizeFlow(): Promise<void> {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error('Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (from the OAuth Desktop app client)');
+  }
+  await automationRunAuthorizeFlow(clientId, clientSecret);
 }
 
 // Renders on demand and caches per-process only — each receipt is reviewed
@@ -48,6 +66,10 @@ export function createApp(deps: AppDeps) {
   const importJobs = new ImportJobs({ prisma: deps.prisma });
   const syncRunJobs = new SyncRunJobs({
     run: () => runSyncOverview({ prisma: deps.prisma, buildSheetsClient: deps.buildSheetsClient ?? defaultSheetsClient }),
+  });
+  const googleAuthJobs = new GoogleAuthJobs({
+    runAuthorizeFlow: deps.runAuthorizeFlow ?? defaultRunAuthorizeFlow,
+    hasSavedCredentials: deps.hasSavedCredentials ?? automationHasSavedCredentials,
   });
 
   const app = new Hono()
@@ -176,6 +198,13 @@ export function createApp(deps: AppDeps) {
     .get('/api/sync-runs', async (c) => {
       const runs = await listSyncRuns(deps.prisma);
       return c.json(runs);
+    })
+
+    .get('/api/google-auth/status', (c) => c.json({ connected: googleAuthJobs.isConnected(), job: googleAuthJobs.get() }))
+
+    .post('/api/google-auth/reauthorize', (c) => {
+      googleAuthJobs.start();
+      return c.json({ started: true });
     })
 
     .get('/api/receipts/:id/source.pdf', async (c) => {

@@ -44,6 +44,11 @@ interface SyncRunSummary {
   errorMessage: string | null;
 }
 
+interface GoogleAuthStatus {
+  connected: boolean;
+  job: { status: 'pending' } | { status: 'done' } | { status: 'error'; message: string } | null;
+}
+
 const POLL_INTERVAL_MS = 2000;
 
 function sleep(ms: number): Promise<void> {
@@ -71,16 +76,36 @@ export function SyncOverviewPage() {
   const [runs, setRuns] = useState<SyncRunSummary[] | null>(null);
   const [running, setRunning] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [authStatus, setAuthStatus] = useState<GoogleAuthStatus | null>(null);
+  const [reauthorizing, setReauthorizing] = useState(false);
 
   async function refresh(): Promise<void> {
-    const [overviewRes, runsRes] = await Promise.all([api['sync-overview'].$get(), api['sync-runs'].$get()]);
+    const [overviewRes, runsRes, authRes] = await Promise.all([api['sync-overview'].$get(), api['sync-runs'].$get(), api['google-auth'].status.$get()]);
     setOverview(await overviewRes.json());
     setRuns(await runsRes.json());
+    setAuthStatus(await authRes.json());
   }
 
   useEffect(() => {
     void refresh();
   }, []);
+
+  async function handleReauthorize(): Promise<void> {
+    setReauthorizing(true);
+    await api['google-auth'].reauthorize.$post();
+
+    for (;;) {
+      const res = await api['google-auth'].status.$get();
+      const status = await res.json();
+      setAuthStatus(status);
+      if (status.job?.status !== 'pending') {
+        break;
+      }
+      await sleep(POLL_INTERVAL_MS);
+    }
+
+    setReauthorizing(false);
+  }
 
   async function handleRunSync(): Promise<void> {
     setRunning(true);
@@ -108,6 +133,19 @@ export function SyncOverviewPage() {
     <Container maxWidth="lg" sx={{ py: 6 }}>
       <Stack spacing={3}>
         <Typography variant="h4">Sync overview</Typography>
+
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+          {authStatus?.connected ? (
+            <Chip label="Google Sheets: connected" color="success" size="small" variant="outlined" />
+          ) : (
+            <Chip label="Google Sheets: not connected" color="warning" size="small" variant="outlined" />
+          )}
+          <Button size="small" onClick={() => void handleReauthorize()} disabled={reauthorizing}>
+            {reauthorizing ? <CircularProgress size={16} sx={{ mr: 1 }} /> : null}
+            Reauthorize
+          </Button>
+          {authStatus?.job?.status === 'error' ? <Alert severity="error">{authStatus.job.message}</Alert> : null}
+        </Stack>
 
         <Paper sx={{ p: 3 }}>
           {overview === null ? (
