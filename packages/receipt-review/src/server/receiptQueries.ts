@@ -57,8 +57,8 @@ export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary
         include: {
             store: true,
             payer: true,
-            _count: { select: { lineItems: true } },
-            lineItems: { include: { splits: { include: { participant: true } } } },
+            _count: { select: { lineItems: { where: { removedAt: null } } } },
+            lineItems: { where: { removedAt: null }, include: { splits: { include: { participant: true } } } },
         },
     });
 
@@ -128,6 +128,10 @@ export interface LineItemDetail {
     lineTotal: number;
     discountAmount: number;
     reviewed: boolean;
+    /** The VLM's (or a reviewer's) read of whether this line is taxable — null means unset/unknown, never a false claim (docs/adr/0009). */
+    taxable: boolean | null;
+    /** Set when this line has been soft-deleted (lineItemReview.ts's deleteLineItem) — kept in this array (rather than excluded) so the client can render it struck-through with a Restore action. */
+    removedAt: string | null;
     splits: Record<string, number>;
     priceHistory: PriceHistory;
     /** Whether this item already had a learned typical split before this receipt. */
@@ -209,6 +213,8 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
             lineTotal: lineItem.lineTotal,
             discountAmount: lineItem.discountAmount,
             reviewed: lineItem.reviewed,
+            taxable: lineItem.taxable,
+            removedAt: lineItem.removedAt ? lineItem.removedAt.toISOString() : null,
             splits: Object.fromEntries(lineItem.splits.map((s) => [s.participant.name, s.percent])),
             priceHistory,
             provenance,

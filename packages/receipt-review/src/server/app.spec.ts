@@ -141,7 +141,7 @@ describe('app', () => {
         expect(good.status).toBe(200);
     });
 
-    it('deletes a line item and reflects the recomputed total, both in the response and on refetch', async () => {
+    it('soft-deletes a line item (keeping it, flagged, in the response) and reflects the recomputed total', async () => {
         const { app } = setup();
         const seeded = await seedBasicReceipt(prisma);
 
@@ -149,15 +149,100 @@ describe('app', () => {
             method: 'DELETE',
         });
         expect(res.status).toBe(200);
-        const detail = (await res.json()) as { lineItems: { id: number }[]; total: number };
-        expect(detail.lineItems).toHaveLength(1);
+        const detail = (await res.json()) as { lineItems: { id: number; removedAt: string | null }[]; total: number };
+        expect(detail.lineItems).toHaveLength(2);
+        expect(detail.lineItems.find((li) => li.id === seeded.lineItemIds[0])?.removedAt).not.toBeNull();
         expect(detail.total).toBe(10);
 
         const refetched = (await (await app.request(`/api/receipts/${seeded.receiptId}`)).json()) as typeof detail;
         expect(refetched).toEqual(detail);
 
-        const listed = (await (await app.request('/api/receipts')).json()) as { id: number; total: number }[];
-        expect(listed.find((r) => r.id === seeded.receiptId)?.total).toBe(10);
+        const listed = (await (await app.request('/api/receipts')).json()) as {
+            id: number;
+            total: number;
+            lineItemCount: number;
+        }[];
+        const summary = listed.find((r) => r.id === seeded.receiptId);
+        expect(summary?.total).toBe(10);
+        expect(summary?.lineItemCount).toBe(1);
+    });
+
+    it('restores a soft-deleted line item, bringing its original split/price back into the total', async () => {
+        const { app } = setup();
+        const seeded = await seedBasicReceipt(prisma);
+        await app.request(`/api/receipts/${seeded.receiptId}/line-items/${seeded.lineItemIds[0]}`, {
+            method: 'DELETE',
+        });
+
+        const res = await app.request(
+            `/api/receipts/${seeded.receiptId}/line-items/${seeded.lineItemIds[0]}/restore`,
+            { method: 'POST' },
+        );
+
+        expect(res.status).toBe(200);
+        const detail = (await res.json()) as {
+            lineItems: { id: number; removedAt: string | null; splits: Record<string, number> }[];
+            total: number;
+        };
+        expect(detail.total).toBe(20);
+        const restored = detail.lineItems.find((li) => li.id === seeded.lineItemIds[0]);
+        expect(restored?.removedAt).toBeNull();
+        expect(restored?.splits).toEqual({ Brian: 50, Patrice: 50 });
+    });
+
+    it('adds a hand-entered line item, seeding its split from the matching item’s learned default', async () => {
+        const { app } = setup();
+        const seeded = await seedBasicReceipt(prisma);
+        await prisma.itemSplitDefault.createMany({
+            data: [
+                { itemId: seeded.itemIds[0], participantId: seeded.brianId, percent: 70 },
+                { itemId: seeded.itemIds[0], participantId: seeded.patriceId, percent: 30 },
+            ],
+        });
+
+        const res = await app.request(`/api/receipts/${seeded.receiptId}/line-items`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ itemCode: '111', rawName: 'WIDGET (extra)', unitPrice: 5, quantity: 2 }),
+        });
+
+        expect(res.status).toBe(200);
+        const detail = (await res.json()) as {
+            lineItems: { rawName: string; lineTotal: number; splits: Record<string, number> }[];
+            total: number;
+        };
+        expect(detail.lineItems).toHaveLength(3);
+        const added = detail.lineItems.find((li) => li.rawName === 'WIDGET (extra)');
+        expect(added?.lineTotal).toBe(10);
+        expect(added?.splits).toEqual({ Brian: 70, Patrice: 30 });
+        expect(detail.total).toBe(30);
+    });
+
+    it('re-resolves a line item’s code without disturbing an already-adjusted split', async () => {
+        const { app } = setup();
+        const seeded = await seedBasicReceipt(prisma);
+        await app.request(`/api/receipts/${seeded.receiptId}/line-items/${seeded.lineItemIds[0]}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ splits: { Brian: 90, Patrice: 10 } }),
+        });
+
+        const res = await app.request(
+            `/api/receipts/${seeded.receiptId}/line-items/${seeded.lineItemIds[0]}/item-code`,
+            {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ itemCode: '222' }),
+            },
+        );
+
+        expect(res.status).toBe(200);
+        const detail = (await res.json()) as {
+            lineItems: { id: number; itemId: number | null; splits: Record<string, number> }[];
+        };
+        const corrected = detail.lineItems.find((li) => li.id === seeded.lineItemIds[0]);
+        expect(corrected?.itemId).toBe(seeded.itemIds[1]);
+        expect(corrected?.splits).toEqual({ Brian: 90, Patrice: 10 });
     });
 
     it('rejects submit until every line is reviewed, then succeeds', async () => {

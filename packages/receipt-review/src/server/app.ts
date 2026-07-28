@@ -46,7 +46,17 @@ import {
 import { getReceiptDetail, listReceipts } from './receiptQueries.js';
 import { deleteReceipt, ReceiptNotDeletableError } from './receiptMutations.js';
 import { listImportedTransactions, toTransactionSummary } from './transactionQueries.js';
-import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema, deleteLineItem } from './lineItemReview.js';
+import {
+    SplitsSumError,
+    updateLineItemSplits,
+    updateLineItemSplitsSchema,
+    deleteLineItem,
+    restoreLineItem,
+    addLineItem,
+    addLineItemSchema,
+    updateLineItemCode,
+    updateLineItemCodeSchema,
+} from './lineItemReview.js';
 import {
     TransactionSyncedError,
     updateImportedTransaction,
@@ -195,12 +205,54 @@ export function createApp(deps: AppDeps) {
             },
         )
 
-        // Removes an incorrectly-extracted line item entirely (e.g. a
+        // Adds a line item the VLM missed entirely, resolving it against the
+        // receipt's own store the same way ingest.ts's per-item loop does.
+        .post('/api/receipts/:id/line-items', zValidator('json', addLineItemSchema), async (c) => {
+            const receiptId = parseIntParam(c.req.param('id'));
+            await addLineItem(deps.prisma, receiptId, c.req.valid('json'));
+            const detail = await getReceiptDetail(deps.prisma, receiptId);
+            if (!detail) {
+                throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
+            }
+            return c.json(detail);
+        })
+
+        // Immediate, not part of the batched per-line PATCH below — re-resolves
+        // against whichever Item the corrected code actually points to, moving
+        // the line's PriceObservation there, but leaving its split untouched.
+        .patch(
+            '/api/receipts/:id/line-items/:lineItemId/item-code',
+            zValidator('json', updateLineItemCodeSchema),
+            async (c) => {
+                const lineItemId = parseIntParam(c.req.param('lineItemId'));
+                await updateLineItemCode(deps.prisma, lineItemId, c.req.valid('json').itemCode);
+                const receiptId = parseIntParam(c.req.param('id'));
+                const detail = await getReceiptDetail(deps.prisma, receiptId);
+                if (!detail) {
+                    throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
+                }
+                return c.json(detail);
+            },
+        )
+
+        // Soft-deletes an incorrectly-extracted line item (e.g. a
         // misattributed Costco discount-reference line) and returns the
-        // receipt's totals recomputed against what remains.
+        // receipt's totals recomputed against what remains — see
+        // restoreLineItem below for undoing this.
         .delete('/api/receipts/:id/line-items/:lineItemId', async (c) => {
             const lineItemId = parseIntParam(c.req.param('lineItemId'));
             await deleteLineItem(deps.prisma, lineItemId);
+            const receiptId = parseIntParam(c.req.param('id'));
+            const detail = await getReceiptDetail(deps.prisma, receiptId);
+            if (!detail) {
+                throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
+            }
+            return c.json(detail);
+        })
+
+        .post('/api/receipts/:id/line-items/:lineItemId/restore', async (c) => {
+            const lineItemId = parseIntParam(c.req.param('lineItemId'));
+            await restoreLineItem(deps.prisma, lineItemId);
             const receiptId = parseIntParam(c.req.param('id'));
             const detail = await getReceiptDetail(deps.prisma, receiptId);
             if (!detail) {
@@ -524,8 +576,9 @@ export function createApp(deps: AppDeps) {
             if (detail.purchaseDate === null || detail.total === null) {
                 throw new HTTPException(400, { message: `Receipt ${id} hasn't finished extraction yet` });
             }
-            const participantNames = [...new Set(detail.lineItems.flatMap((li) => Object.keys(li.splits)))];
-            const aggregateLines: AggregateLine[] = detail.lineItems.map((li) => ({
+            const activeLineItems = detail.lineItems.filter((li) => li.removedAt === null);
+            const participantNames = [...new Set(activeLineItems.flatMap((li) => Object.keys(li.splits)))];
+            const aggregateLines: AggregateLine[] = activeLineItems.map((li) => ({
                 lineTotal: li.lineTotal,
                 discountAmount: li.discountAmount,
                 splits: li.splits,
@@ -537,7 +590,7 @@ export function createApp(deps: AppDeps) {
                 payer: detail.payer,
                 purchaseDate: detail.purchaseDate.slice(0, 10),
                 total: detail.total,
-                lineItems: detail.lineItems.map((li) => ({
+                lineItems: activeLineItems.map((li) => ({
                     name: li.displayName ?? li.rawName,
                     unitPrice: li.unitPrice,
                     quantity: li.quantity,

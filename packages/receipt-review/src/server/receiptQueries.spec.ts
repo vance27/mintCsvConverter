@@ -165,6 +165,40 @@ describe('receiptQueries', () => {
         expect(line?.priceHistory.changePercent).toBeCloseTo(25);
     });
 
+    it('excludes a soft-removed line item from listReceipts’ lineItemCount and aggregate', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        const seeded = await seedBasicReceipt(prisma);
+        await prisma.lineItem.update({ where: { id: seeded.lineItemIds[0] }, data: { removedAt: new Date() } });
+
+        const results = await listReceipts(prisma);
+
+        expect(results[0].lineItemCount).toBe(1);
+        expect(results[0].aggregate).toEqual({ Brian: 50, Patrice: 50 });
+    });
+
+    it('keeps a soft-removed line item in getReceiptDetail, flagged via removedAt, so the client can offer Restore', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        const seeded = await seedBasicReceipt(prisma);
+        await prisma.lineItem.update({ where: { id: seeded.lineItemIds[0] }, data: { removedAt: new Date() } });
+
+        const detail = await getReceiptDetail(prisma, seeded.receiptId);
+
+        expect(detail?.lineItems).toHaveLength(2);
+        const removed = detail?.lineItems.find((li) => li.id === seeded.lineItemIds[0]);
+        const kept = detail?.lineItems.find((li) => li.id === seeded.lineItemIds[1]);
+        expect(removed?.removedAt).not.toBeNull();
+        expect(kept?.removedAt).toBeNull();
+    });
+
+    it('reports a pre-existing line item’s taxable as null (unset), not a false claim', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        const seeded = await seedBasicReceipt(prisma);
+
+        const detail = await getReceiptDetail(prisma, seeded.receiptId);
+
+        expect(detail?.lineItems.every((li) => li.taxable === null)).toBe(true);
+    });
+
     it('returns null for a nonexistent receipt', async () => {
         ({ prisma, cleanup } = createTestDb());
         expect(await getReceiptDetail(prisma, 999999)).toBeNull();

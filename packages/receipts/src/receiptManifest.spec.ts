@@ -95,4 +95,40 @@ describe('listManifestEntries', () => {
 
         await expect(listManifestEntries(prisma)).resolves.toEqual([]);
     });
+
+    it('excludes a soft-removed line item from a SUBMITTED receipt’s aggregate', async () => {
+        const prisma = db();
+        const submitted = await seedReceipt(prisma, { status: 'SUBMITTED', brianPercent: 65, patricePercent: 35 });
+        const removedItem = await prisma.item.create({
+            data: { storeId: submitted.storeId, itemCode: 'removed-1', lastSeenName: 'REMOVED THING' },
+        });
+        const removedLine = await prisma.lineItem.create({
+            data: {
+                receiptId: submitted.id,
+                itemId: removedItem.id,
+                rawName: 'REMOVED THING',
+                unitPrice: 100,
+                quantity: 1,
+                lineTotal: 100,
+                reviewed: true,
+                removedAt: new Date(),
+            },
+        });
+        const [brian, patrice] = await Promise.all([
+            prisma.participant.findUniqueOrThrow({ where: { name: 'Brian' } }),
+            prisma.participant.findUniqueOrThrow({ where: { name: 'Patrice' } }),
+        ]);
+        await prisma.lineItemSplit.createMany({
+            data: [
+                { lineItemId: removedLine.id, participantId: brian.id, percent: 0 },
+                { lineItemId: removedLine.id, participantId: patrice.id, percent: 100 },
+            ],
+        });
+
+        const entries = await listManifestEntries(prisma);
+
+        // If the $100 removed line counted, the aggregate would skew heavily
+        // toward Patrice instead of staying at the original 65/35.
+        expect(entries[0].percentages).toEqual({ Brian: 65, Patrice: 35 });
+    });
 });

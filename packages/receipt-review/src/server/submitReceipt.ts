@@ -40,13 +40,18 @@ export async function submitReceipt(
         },
     });
 
-    const unresolved = receipt.lineItems.filter((lineItem) => !lineItem.reviewed);
+    // A soft-deleted line (docs/adr/0009) never needs review and never
+    // counts toward the aggregate/audit — same exclusion recomputeReceiptTotals
+    // already applies to Receipt.subtotal/total.
+    const activeLineItems = receipt.lineItems.filter((lineItem) => lineItem.removedAt === null);
+
+    const unresolved = activeLineItems.filter((lineItem) => !lineItem.reviewed);
     if (unresolved.length > 0) {
         throw new UnresolvedLineItemsError(unresolved.map((lineItem) => lineItem.id));
     }
 
-    const participantNames = [...new Set(receipt.lineItems.flatMap((li) => li.splits.map((s) => s.participant.name)))];
-    const aggregateLines: AggregateLine[] = receipt.lineItems.map((lineItem) => ({
+    const participantNames = [...new Set(activeLineItems.flatMap((li) => li.splits.map((s) => s.participant.name)))];
+    const aggregateLines: AggregateLine[] = activeLineItems.map((lineItem) => ({
         lineTotal: lineItem.lineTotal,
         discountAmount: lineItem.discountAmount,
         splits: Object.fromEntries(lineItem.splits.map((s) => [s.participant.name, s.percent])),
@@ -54,7 +59,7 @@ export async function submitReceipt(
     const aggregate = aggregateSplits(aggregateLines, participantNames);
 
     await prisma.$transaction(async (tx) => {
-        for (const lineItem of receipt.lineItems) {
+        for (const lineItem of activeLineItems) {
             if (!lineItem.itemId) {
                 continue;
             }
@@ -84,7 +89,7 @@ export async function submitReceipt(
             payer: receipt.payer.name,
             purchaseDate: (receipt.purchaseDate ?? receipt.createdAt).toISOString().slice(0, 10),
             total: receipt.total ?? 0,
-            lineItems: receipt.lineItems.map((lineItem) => ({
+            lineItems: activeLineItems.map((lineItem) => ({
                 name: lineItem.item?.displayName ?? lineItem.rawName,
                 unitPrice: lineItem.unitPrice,
                 quantity: lineItem.quantity,

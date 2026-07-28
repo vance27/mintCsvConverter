@@ -1,14 +1,15 @@
 import { tendersReconcile, type PrismaClient } from '@mint-csv-converter/receipts';
 
-function round2(n: number): number {
+export function round2(n: number): number {
     return Math.round(n * 100) / 100;
 }
 
 /**
  * Recomputes Receipt.subtotal/total/reconciled from its CURRENT set of
- * LineItems — these fields are otherwise written once at ingest time
+ * non-removed LineItems (docs/adr/0009's soft-delete excludes removedAt
+ * rows) — these fields are otherwise written once at ingest time
  * (ingest.ts) and never revisited, so a reviewer editing a line item's
- * price or deleting a bogus one would otherwise leave them silently stale.
+ * price or removing a bogus one would otherwise leave them silently stale.
  * `tax` is left untouched: it isn't decomposed per line, so there's no
  * principled way to adjust it from a line-level edit.
  *
@@ -22,7 +23,7 @@ function round2(n: number): number {
  */
 export async function recomputeReceiptTotals(prisma: PrismaClient, receiptId: number): Promise<void> {
     const [lineItems, tenders, receipt] = await Promise.all([
-        prisma.lineItem.findMany({ where: { receiptId } }),
+        prisma.lineItem.findMany({ where: { receiptId, removedAt: null } }),
         prisma.receiptTender.findMany({ where: { receiptId } }),
         prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } }),
     ]);

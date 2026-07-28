@@ -5,7 +5,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { createTestDb } from '@mint-csv-converter/receipts/dist/testing/testDb.js';
 import { ReceiptStatus, listManifestEntries, type PrismaClient } from '@mint-csv-converter/receipts';
 import { UnresolvedLineItemsError, submitReceipt } from './submitReceipt.js';
-import { updateLineItemSplits } from './lineItemReview.js';
+import { updateLineItemSplits, deleteLineItem } from './lineItemReview.js';
 import { seedBasicReceipt } from './testing/fixtures.js';
 
 describe('submitReceipt', () => {
@@ -47,6 +47,20 @@ describe('submitReceipt', () => {
         const defaults = await prisma.itemSplitDefault.findMany({ where: { itemId: seeded.itemIds[0] } });
         expect(defaults.find((d) => d.participantId === seeded.brianId)?.percent).toBe(100);
         expect(defaults.find((d) => d.participantId === seeded.patriceId)?.percent).toBe(0);
+    });
+
+    it('a soft-removed line item does not block submit and is excluded from the aggregate', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        dir = mkdtempSync(join(tmpdir(), 'submit-test-'));
+        const seeded = await seedBasicReceipt(prisma);
+        await deleteLineItem(prisma, seeded.lineItemIds[0]);
+        // The remaining, non-removed line still needs review — removal doesn't
+        // exempt other lines from the usual gate.
+        await updateLineItemSplits(prisma, seeded.lineItemIds[1], { splits: { Brian: 0, Patrice: 100 } });
+
+        const result = await submitReceipt(prisma, seeded.receiptId, { auditDir: join(dir, 'audits') });
+
+        expect(result.aggregate).toEqual({ Brian: 0, Patrice: 100 });
     });
 
     it('resubmitting an already-SUBMITTED receipt updates its live manifest entry and ItemSplitDefaults in place, without duplicating', async () => {

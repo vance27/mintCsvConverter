@@ -54,6 +54,18 @@ describe('recomputeReceiptTotals', () => {
         expect(receipt.reconciled).toBe(false);
     });
 
+    it('excludes a soft-removed line item from the recomputed totals', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        const seeded = await seedBasicReceipt(prisma);
+        await prisma.lineItem.update({ where: { id: seeded.lineItemIds[0] }, data: { removedAt: new Date() } });
+
+        await recomputeReceiptTotals(prisma, seeded.receiptId);
+
+        const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: seeded.receiptId } });
+        expect(receipt.subtotal).toBe(10);
+        expect(receipt.total).toBe(10);
+    });
+
     it('adds tax to the recomputed subtotal for the total', async () => {
         ({ prisma, cleanup } = createTestDb());
         const seeded = await seedBasicReceipt(prisma);
