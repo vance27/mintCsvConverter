@@ -41,6 +41,7 @@ import {
     type VisionChatClient,
 } from '@mint-csv-converter/receipts';
 import { getReceiptDetail, listReceipts } from './receiptQueries.js';
+import { deleteReceipt, ReceiptNotDeletableError } from './receiptMutations.js';
 import { listImportedTransactions, toTransactionSummary } from './transactionQueries.js';
 import { SplitsSumError, updateLineItemSplits, updateLineItemSplitsSchema, deleteLineItem } from './lineItemReview.js';
 import {
@@ -185,6 +186,22 @@ export function createApp(deps: AppDeps) {
                 throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
             }
             return c.json(detail);
+        })
+
+        // Hard-deletes a receipt in a terminal, non-submitted status (FAILED,
+        // CANCELLED, or EXTRACTED) — rejected for QUEUED, EXTRACTING, or
+        // SUBMITTED. See receiptMutations.ts's deleteReceipt.
+        .delete('/api/receipts/:id', async (c) => {
+            const id = parseIntParam(c.req.param('id'));
+            try {
+                await deleteReceipt(deps.prisma, id);
+            } catch (error) {
+                if (error instanceof ReceiptNotDeletableError) {
+                    throw new HTTPException(400, { message: error.message });
+                }
+                throw error;
+            }
+            return c.json({ ok: true });
         })
 
         .post('/api/receipts/:id/submit', async (c) => {
