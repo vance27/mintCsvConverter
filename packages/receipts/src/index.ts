@@ -8,6 +8,7 @@ export {
     type TenderReconcileResult,
 } from './reconcile.js';
 export { aggregateSplits, type AggregateLine } from './aggregate.js';
+export { storeNamesDisagree } from './storeNameMatch.js';
 export { isPending, hasReliableExtraction, canRetry, type ReceiptStatusLike } from './receiptStateMachine.js';
 export type { ExtractedReceipt, ExtractedLineItem } from './types.js';
 export { renderPdfPages } from './renderPdf.js';

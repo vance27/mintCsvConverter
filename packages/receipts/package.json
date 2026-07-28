@@ -22,6 +22,10 @@
             "types": "./dist/reconcile.d.ts",
             "default": "./dist/reconcile.js"
         },
+        "./storeNameMatch": {
+            "types": "./dist/storeNameMatch.d.ts",
+            "default": "./dist/storeNameMatch.js"
+        },
         "./dist/testing/testDb.js": {
             "types": "./dist/testing/testDb.d.ts",
             "default": "./dist/testing/testDb.js"
