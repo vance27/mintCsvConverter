@@ -1,0 +1,8 @@
+# Upload form: Payer is a strict Select, Store is a vendor-list-suggested Autocomplete
+
+The Upload page's Store and Payer fields are both plain `TextField`s today, and behave very differently on a typo: `findParticipantOrThrow` throws if Payer doesn't exactly match an existing `Participant`, but `findOrCreateStore` silently creates a new `Store` row on any mismatch — invisibly fragmenting that item's price-history/learned-split data across two "stores" that are actually the same one.
+
+Fixing this requires treating the two fields as different kinds of values, not the same widget twice:
+
+- **Payer** is a strict closed set — one of the same active Participants used for splits (currently always exactly 2, per [ADR-0001](0001-receipts-ui-stays-two-participant.md)) — and should basically never grow. It becomes a `Select`, with no "type something new" affordance at all.
+- **Store** is an open set in principle, but its real purpose is narrower than "any vendor name": a receipt's Store only ever gets matched back to its Citi transaction during Sync if the name is a substring of the transaction description *and* matches a `VariableSplitRule.pattern` (the Settings tab's variable-split vendor list). A Store name with no corresponding rule silently makes that receipt permanently unmatchable, with no visible indication why. Store becomes an `Autocomplete` with `freeSolo`, suggestions sourced from the `VariableSplitRule` vendor list rather than from whatever `Store.name` values already happen to exist in the DB — steering toward matchable names while still allowing a genuinely new one to be typed.
