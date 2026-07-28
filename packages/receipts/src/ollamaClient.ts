@@ -14,14 +14,14 @@ import { Ollama } from 'ollama';
  * request; callers of this interface still see one plain non-streaming
  * response, same as before. */
 export interface VisionChatClient {
-  chat(
-    request: {
-      model: string;
-      messages: { role: string; content: string; images?: string[] }[];
-      format?: object;
-    },
-    signal?: AbortSignal,
-  ): Promise<{ message: { content: string } }>;
+    chat(
+        request: {
+            model: string;
+            messages: { role: string; content: string; images?: string[] }[];
+            format?: object;
+        },
+        signal?: AbortSignal,
+    ): Promise<{ message: { content: string } }>;
 }
 
 /** How often to log a "still working" heartbeat while chunks are streaming in — real progress, not just a stall guess. */
@@ -53,39 +53,39 @@ const PROGRESS_LOG_INTERVAL_MS = 15_000;
  * un-updatable second Ollama install alongside the real one.
  */
 export function defaultOllamaModel(env: NodeJS.ProcessEnv = process.env): string {
-  return env.OLLAMA_MODEL ?? 'qwen2.5vl:32b';
+    return env.OLLAMA_MODEL ?? 'qwen2.5vl:32b';
 }
 
 /** Builds a real client against a local Ollama server (default http://localhost:11434). */
 export function createOllamaClient(env: NodeJS.ProcessEnv = process.env): VisionChatClient {
-  const ollama = new Ollama({ host: env.OLLAMA_HOST });
-  return {
-    async chat(request, signal) {
-      signal?.throwIfAborted();
-      const stream = await ollama.chat({ ...request, stream: true });
-      // signal may have fired while the line above was awaiting the
-      // connection to even open, before there was a stream to abort — catch
-      // that race here rather than only reacting to a later 'abort' event.
-      if (signal?.aborted) {
-        stream.abort();
-      }
-      const onAbort = () => stream.abort();
-      signal?.addEventListener('abort', onAbort, { once: true });
-      try {
-        let content = '';
-        let lastLogAt = Date.now();
-        for await (const chunk of stream) {
-          content += chunk.message.content;
-          const now = Date.now();
-          if (now - lastLogAt >= PROGRESS_LOG_INTERVAL_MS) {
-            console.log(`[ollama] still streaming — ${content.length} chars received so far`);
-            lastLogAt = now;
-          }
-        }
-        return { message: { content } };
-      } finally {
-        signal?.removeEventListener('abort', onAbort);
-      }
-    },
-  };
+    const ollama = new Ollama({ host: env.OLLAMA_HOST });
+    return {
+        async chat(request, signal) {
+            signal?.throwIfAborted();
+            const stream = await ollama.chat({ ...request, stream: true });
+            // signal may have fired while the line above was awaiting the
+            // connection to even open, before there was a stream to abort — catch
+            // that race here rather than only reacting to a later 'abort' event.
+            if (signal?.aborted) {
+                stream.abort();
+            }
+            const onAbort = () => stream.abort();
+            signal?.addEventListener('abort', onAbort, { once: true });
+            try {
+                let content = '';
+                let lastLogAt = Date.now();
+                for await (const chunk of stream) {
+                    content += chunk.message.content;
+                    const now = Date.now();
+                    if (now - lastLogAt >= PROGRESS_LOG_INTERVAL_MS) {
+                        console.log(`[ollama] still streaming — ${content.length} chars received so far`);
+                        lastLogAt = now;
+                    }
+                }
+                return { message: { content } };
+            } finally {
+                signal?.removeEventListener('abort', onAbort);
+            }
+        },
+    };
 }

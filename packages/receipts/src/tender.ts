@@ -6,8 +6,8 @@ import type { ExtractedTender } from './types.js';
  * breakdown was extracted (the common case: paid entirely by card).
  */
 export function cardAmount(tenders: ExtractedTender[], total: number): number {
-  if (tenders.length === 0) {
-    return total;
-  }
-  return tenders.filter((tender) => tender.kind === 'CARD').reduce((sum, tender) => sum + tender.amount, 0);
+    if (tenders.length === 0) {
+        return total;
+    }
+    return tenders.filter((tender) => tender.kind === 'CARD').reduce((sum, tender) => sum + tender.amount, 0);
 }

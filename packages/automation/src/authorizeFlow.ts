@@ -21,23 +21,25 @@ const SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.goo
  * machine as the browser that needs to complete the consent screen.
  */
 export async function runAuthorizeFlow(
-  clientId: string,
-  clientSecret: string,
-  tokenPath: string = defaultTokenPath(),
+    clientId: string,
+    clientSecret: string,
+    tokenPath: string = defaultTokenPath(),
 ): Promise<void> {
-  // @google-cloud/local-auth only accepts a keyfilePath, not credentials
-  // directly — write one to a throwaway temp dir for the duration of this
-  // one-time interactive flow rather than requiring a JSON file on disk.
-  const tempDir = mkdtempSync(join(tmpdir(), 'mint-csv-converter-oauth-'));
-  const keyfilePath = join(tempDir, 'client_secret.json');
-  try {
-    writeFileSync(
-      keyfilePath,
-      JSON.stringify({ installed: { client_id: clientId, client_secret: clientSecret, redirect_uris: ['http://localhost'] } }),
-    );
-    const client = await authenticate({ keyfilePath, scopes: SCOPES });
-    saveCredentials(client.credentials, tokenPath);
-  } finally {
-    rmSync(tempDir, { recursive: true, force: true });
-  }
+    // @google-cloud/local-auth only accepts a keyfilePath, not credentials
+    // directly — write one to a throwaway temp dir for the duration of this
+    // one-time interactive flow rather than requiring a JSON file on disk.
+    const tempDir = mkdtempSync(join(tmpdir(), 'mint-csv-converter-oauth-'));
+    const keyfilePath = join(tempDir, 'client_secret.json');
+    try {
+        writeFileSync(
+            keyfilePath,
+            JSON.stringify({
+                installed: { client_id: clientId, client_secret: clientSecret, redirect_uris: ['http://localhost'] },
+            }),
+        );
+        const client = await authenticate({ keyfilePath, scopes: SCOPES });
+        saveCredentials(client.credentials, tokenPath);
+    } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+    }
 }

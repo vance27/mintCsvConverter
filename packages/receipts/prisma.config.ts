@@ -8,11 +8,11 @@ const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
 const defaultUrl = `file:${home}/.config/mint-csv-converter/receipts.db`;
 
 export default defineConfig({
-  schema: 'prisma/schema.prisma',
-  migrations: {
-    path: 'prisma/migrations',
-  },
-  datasource: {
-    url: process.env.DATABASE_URL ?? defaultUrl,
-  },
+    schema: 'prisma/schema.prisma',
+    migrations: {
+        path: 'prisma/migrations',
+    },
+    datasource: {
+        url: process.env.DATABASE_URL ?? defaultUrl,
+    },
 });

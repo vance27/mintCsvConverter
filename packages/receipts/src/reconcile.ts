@@ -4,16 +4,16 @@ import type { ExtractedReceipt } from './types.js';
 export const RECONCILE_TOLERANCE = 0.02;
 
 export interface ReconcileResult {
-  /** True when the line-sum→subtotal, subtotal+tax→total, and (if present) tender→total checks all hold. */
-  reconciled: boolean;
-  /** Σ(lineTotal − discountAmount) across items. */
-  lineSum: number;
-  /** lineSum − subtotal (≈ 0 when consistent). */
-  subtotalDelta: number;
-  /** (subtotal + tax) − total (≈ 0 when consistent). */
-  totalDelta: number;
-  /** Σ tender amounts − total (≈ 0 when consistent); null when no tenders were extracted. */
-  tenderDelta: number | null;
+    /** True when the line-sum→subtotal, subtotal+tax→total, and (if present) tender→total checks all hold. */
+    reconciled: boolean;
+    /** Σ(lineTotal − discountAmount) across items. */
+    lineSum: number;
+    /** lineSum − subtotal (≈ 0 when consistent). */
+    subtotalDelta: number;
+    /** (subtotal + tax) − total (≈ 0 when consistent). */
+    totalDelta: number;
+    /** Σ tender amounts − total (≈ 0 when consistent); null when no tenders were extracted. */
+    tenderDelta: number | null;
 }
 
 /**
@@ -26,12 +26,16 @@ export interface ReconcileResult {
  * rather than a misread digit propagating silently.
  */
 export function reconcile(receipt: ExtractedReceipt, tolerance: number = RECONCILE_TOLERANCE): ReconcileResult {
-  const lineSum = receipt.items.reduce((sum, item) => sum + (item.lineTotal - item.discountAmount), 0);
-  const subtotalDelta = lineSum - receipt.subtotal;
-  const totalDelta = receipt.subtotal + receipt.tax - receipt.total;
-  const tenderDelta =
-    receipt.tenders.length > 0 ? receipt.tenders.reduce((sum, tender) => sum + tender.amount, 0) - receipt.total : null;
-  const reconciled =
-    Math.abs(subtotalDelta) <= tolerance && Math.abs(totalDelta) <= tolerance && (tenderDelta === null || Math.abs(tenderDelta) <= tolerance);
-  return { reconciled, lineSum, subtotalDelta, totalDelta, tenderDelta };
+    const lineSum = receipt.items.reduce((sum, item) => sum + (item.lineTotal - item.discountAmount), 0);
+    const subtotalDelta = lineSum - receipt.subtotal;
+    const totalDelta = receipt.subtotal + receipt.tax - receipt.total;
+    const tenderDelta =
+        receipt.tenders.length > 0
+            ? receipt.tenders.reduce((sum, tender) => sum + tender.amount, 0) - receipt.total
+            : null;
+    const reconciled =
+        Math.abs(subtotalDelta) <= tolerance &&
+        Math.abs(totalDelta) <= tolerance &&
+        (tenderDelta === null || Math.abs(tenderDelta) <= tolerance);
+    return { reconciled, lineSum, subtotalDelta, totalDelta, tenderDelta };
 }

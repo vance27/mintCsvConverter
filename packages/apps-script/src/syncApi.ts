@@ -34,23 +34,23 @@ import { recalculateSettleUp } from './settleUp.js';
  * @throws If no sheet named `sheetName` exists.
  */
 export function finalizeAddedRows(
-  sheetName: string,
-  startRow: number,
-  rowCount: number,
-  rowPercentages?: (Record<string, number> | null)[] | null,
+    sheetName: string,
+    startRow: number,
+    rowCount: number,
+    rowPercentages?: (Record<string, number> | null)[] | null,
 ): void {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = spreadsheet.getSheetByName(sheetName);
-  if (!sheet) {
-    throw new Error(`Sheet "${sheetName}" not found`);
-  }
-
-  for (let i = 0; i < rowCount; i++) {
-    const percentages = rowPercentages?.[i];
-    if (!percentages || !applyRowPercentages(sheet, startRow + i, percentages)) {
-      onSplitTypeChanged(sheet, startRow + i);
+    const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = spreadsheet.getSheetByName(sheetName);
+    if (!sheet) {
+        throw new Error(`Sheet "${sheetName}" not found`);
     }
-  }
 
-  recalculateSettleUp(sheet);
+    for (let i = 0; i < rowCount; i++) {
+        const percentages = rowPercentages?.[i];
+        if (!percentages || !applyRowPercentages(sheet, startRow + i, percentages)) {
+            onSplitTypeChanged(sheet, startRow + i);
+        }
+    }
+
+    recalculateSettleUp(sheet);
 }

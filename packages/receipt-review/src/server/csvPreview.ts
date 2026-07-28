@@ -1,19 +1,23 @@
 import { readRawCsvGrid } from '@mint-csv-converter/core';
-import { findMatchingCsvImportProfile, type CsvImportProfileView, type PrismaClient } from '@mint-csv-converter/receipts';
+import {
+    findMatchingCsvImportProfile,
+    type CsvImportProfileView,
+    type PrismaClient,
+} from '@mint-csv-converter/receipts';
 
 export interface CsvPreview {
-  /** First ~20 raw rows, with no header/column-role assumption — for the configurator's preview grid. */
-  rows: string[][];
-  columnCount: number;
-  /** Normalized (lowercased/trimmed, comma-joined) row 0, assuming it's a header — null only for a fully empty file. */
-  headerSignature: string | null;
-  detectedProfile: CsvImportProfileView | null;
+    /** First ~20 raw rows, with no header/column-role assumption — for the configurator's preview grid. */
+    rows: string[][];
+    columnCount: number;
+    /** Normalized (lowercased/trimmed, comma-joined) row 0, assuming it's a header — null only for a fully empty file. */
+    headerSignature: string | null;
+    detectedProfile: CsvImportProfileView | null;
 }
 
 const PREVIEW_ROW_LIMIT = 20;
 
 function normalizeHeaderRow(row: string[]): string {
-  return row.map((cell) => cell.trim().toLowerCase()).join(',');
+    return row.map((cell) => cell.trim().toLowerCase()).join(',');
 }
 
 /**
@@ -26,14 +30,15 @@ function normalizeHeaderRow(row: string[]): string {
  * configurator.
  */
 export async function previewCsvImport(prisma: PrismaClient, csvPath: string): Promise<CsvPreview> {
-  const grid = readRawCsvGrid(csvPath);
-  const columnCount = grid[0]?.length ?? 0;
-  const headerSignature = grid[0] ? normalizeHeaderRow(grid[0]) : null;
+    const grid = readRawCsvGrid(csvPath);
+    const columnCount = grid[0]?.length ?? 0;
+    const headerSignature = grid[0] ? normalizeHeaderRow(grid[0]) : null;
 
-  const detectedProfile =
-    (headerSignature !== null
-      ? await findMatchingCsvImportProfile(prisma, { hasHeader: true, headerSignature, columnCount })
-      : null) ?? (await findMatchingCsvImportProfile(prisma, { hasHeader: false, headerSignature: null, columnCount }));
+    const detectedProfile =
+        (headerSignature !== null
+            ? await findMatchingCsvImportProfile(prisma, { hasHeader: true, headerSignature, columnCount })
+            : null) ??
+        (await findMatchingCsvImportProfile(prisma, { hasHeader: false, headerSignature: null, columnCount }));
 
-  return { rows: grid.slice(0, PREVIEW_ROW_LIMIT), columnCount, headerSignature, detectedProfile };
+    return { rows: grid.slice(0, PREVIEW_ROW_LIMIT), columnCount, headerSignature, detectedProfile };
 }

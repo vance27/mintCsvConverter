@@ -1,16 +1,16 @@
 {
-  "name": "@mint-csv-converter/receipts",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "dependencies": {
-    "@prisma/adapter-better-sqlite3": "7.9.0",
-    "@prisma/client": "7.9.0",
-    "better-sqlite3": "13.0.1",
-    "ollama": "0.6.3",
-    "pdf-to-img": "6.2.0",
-    "zod": "4.4.3"
-  }
+    "name": "@mint-csv-converter/receipts",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "dependencies": {
+        "@prisma/adapter-better-sqlite3": "7.9.0",
+        "@prisma/client": "7.9.0",
+        "better-sqlite3": "13.0.1",
+        "ollama": "0.6.3",
+        "pdf-to-img": "6.2.0",
+        "zod": "4.4.3"
+    }
 }

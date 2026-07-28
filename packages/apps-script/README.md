@@ -66,7 +66,7 @@ API, OAuth consent screen/client, deploying as "API Executable") are in
 short version:
 
 1. Switch this script's associated Google Cloud project to a real
-   *standard* project (Project Settings → Google Cloud Platform (GCP)
+   _standard_ project (Project Settings → Google Cloud Platform (GCP)
    Project), enable the **Apps Script API** there, and create an OAuth
    client (see CLASP_SETUP.md for exact steps — this is a one-time GCP
    Console setup, not something `clasp`/this repo can automate).

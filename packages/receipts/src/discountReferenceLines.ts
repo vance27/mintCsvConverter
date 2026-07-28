@@ -21,32 +21,32 @@ import type { ExtractedLineItem } from './types.js';
  * (edit price / delete line item).
  */
 export function foldDiscountReferenceLines(items: ExtractedLineItem[]): ExtractedLineItem[] {
-  const byItemCode = new Map<string, ExtractedLineItem>();
-  for (const item of items) {
-    if (item.itemCode && !byItemCode.has(item.itemCode)) {
-      byItemCode.set(item.itemCode, item);
+    const byItemCode = new Map<string, ExtractedLineItem>();
+    for (const item of items) {
+        if (item.itemCode && !byItemCode.has(item.itemCode)) {
+            byItemCode.set(item.itemCode, item);
+        }
     }
-  }
 
-  const folded = new Map<ExtractedLineItem, ExtractedLineItem>();
-  const result: ExtractedLineItem[] = [];
+    const folded = new Map<ExtractedLineItem, ExtractedLineItem>();
+    const result: ExtractedLineItem[] = [];
 
-  for (const item of items) {
-    const referencedCode = extractReferencedCode(item.rawName);
-    const target = referencedCode ? byItemCode.get(referencedCode) : undefined;
-    if (target && target !== item) {
-      const current = folded.get(target) ?? target;
-      folded.set(target, { ...current, discountAmount: current.discountAmount + Math.abs(item.lineTotal) });
-      continue;
+    for (const item of items) {
+        const referencedCode = extractReferencedCode(item.rawName);
+        const target = referencedCode ? byItemCode.get(referencedCode) : undefined;
+        if (target && target !== item) {
+            const current = folded.get(target) ?? target;
+            folded.set(target, { ...current, discountAmount: current.discountAmount + Math.abs(item.lineTotal) });
+            continue;
+        }
+        result.push(item);
     }
-    result.push(item);
-  }
 
-  return result.map((item) => folded.get(item) ?? item);
+    return result.map((item) => folded.get(item) ?? item);
 }
 
 /** A discount-reference line's rawName is "/<itemCode>", possibly with surrounding whitespace — e.g. "/2022527". Returns null for an ordinary item name. */
 function extractReferencedCode(rawName: string): string | null {
-  const match = /^\s*\/\s*([A-Za-z0-9]+)\s*$/.exec(rawName);
-  return match ? match[1] : null;
+    const match = /^\s*\/\s*([A-Za-z0-9]+)\s*$/.exec(rawName);
+    return match ? match[1] : null;
 }

@@ -54,12 +54,12 @@ UI yet — that's Phase 3).
 
    Ollama runs a local server at `http://localhost:11434` — nothing
    leaves your machine, no cloud account, no per-call cost. `brew
-   services start` (rather than running `ollama serve` directly) is what
+services start` (rather than running `ollama serve` directly) is what
    avoids needing a dedicated terminal window: it's managed by `launchd`
    as `homebrew.mxcl.ollama`, starts automatically on login, and keeps
    running in the background. Check it's up any time with `curl
-   http://localhost:11434` (expect `Ollama is running`) or `brew services
-   list`; stop it with `brew services stop ollama` if you ever need to.
+http://localhost:11434` (expect `Ollama is running`) or `brew services
+list`; stop it with `brew services stop ollama` if you ever need to.
    The `ollama` npm dependency here just makes HTTP calls to that server.
    Override the model with `OLLAMA_MODEL`, or the host with `OLLAMA_HOST`,
    if needed.
@@ -94,7 +94,7 @@ UI yet — that's Phase 3).
 nx run @mint-csv-converter/receipts:ingest -- --store Costco --payer Brian /path/to/receipt.pdf
 ```
 
-If extraction doesn't reconcile (subtotal/tax/total *or* tender-vs-total
+If extraction doesn't reconcile (subtotal/tax/total _or_ tender-vs-total
 arithmetic doesn't add up), it's automatically retried from scratch up to
 3 times before giving up — the model isn't perfectly deterministic, so a
 second read sometimes gets a misread quantity right where the first

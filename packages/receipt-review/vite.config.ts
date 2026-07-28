@@ -9,14 +9,14 @@ import react from '@vitejs/plugin-react';
 const API_PORT = process.env.RECEIPT_REVIEW_API_PORT ?? '3100';
 
 export default defineConfig({
-  plugins: [react()],
-  build: {
-    outDir: 'dist/client',
-    emptyOutDir: true,
-  },
-  server: {
-    proxy: {
-      '/api': `http://localhost:${API_PORT}`,
+    plugins: [react()],
+    build: {
+        outDir: 'dist/client',
+        emptyOutDir: true,
     },
-  },
+    server: {
+        proxy: {
+            '/api': `http://localhost:${API_PORT}`,
+        },
+    },
 });

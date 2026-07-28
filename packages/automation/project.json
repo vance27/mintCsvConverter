@@ -1,21 +1,21 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "tags": ["type:lib", "scope:sheets"],
-  "targets": {
-    "authorize": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "node --env-file=.env --import tsx packages/automation/src/scripts/authorize.ts"
-      }
-    },
-    "sync": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["^build"],
-      "options": {
-        "command": "node --env-file=.env --import tsx packages/automation/src/sync.ts"
-      }
+    "$schema": "../../node_modules/nx/schemas/project-schema.json",
+    "tags": ["type:lib", "scope:sheets"],
+    "targets": {
+        "authorize": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "options": {
+                "command": "node --env-file=.env --import tsx packages/automation/src/scripts/authorize.ts"
+            }
+        },
+        "sync": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["^build"],
+            "options": {
+                "command": "node --env-file=.env --import tsx packages/automation/src/sync.ts"
+            }
+        }
     }
-  }
 }

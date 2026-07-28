@@ -7,9 +7,9 @@ import { E2E_DB_PATH } from './dbPath.js';
 
 /** Runs once before the whole e2e suite: a fresh, fully-migrated DB, never the real one. */
 export default function globalSetup(): void {
-  if (existsSync(E2E_DB_PATH)) {
-    rmSync(E2E_DB_PATH);
-  }
-  mkdirSync(dirname(E2E_DB_PATH), { recursive: true });
-  migrateDbAt(E2E_DB_PATH);
+    if (existsSync(E2E_DB_PATH)) {
+        rmSync(E2E_DB_PATH);
+    }
+    mkdirSync(dirname(E2E_DB_PATH), { recursive: true });
+    migrateDbAt(E2E_DB_PATH);
 }

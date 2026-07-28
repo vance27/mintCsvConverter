@@ -1,15 +1,15 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "tags": ["type:app", "scope:apps-script"],
-  "targets": {
-    "deploy": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["build"],
-      "options": {
-        "cwd": "packages/apps-script",
-        "command": "clasp push && clasp deploy -i \"${CLASP_DEPLOYMENT_ID:?Set CLASP_DEPLOYMENT_ID to the existing Web App deployment ID (see: clasp deployments)}\""
-      }
+    "$schema": "../../node_modules/nx/schemas/project-schema.json",
+    "tags": ["type:app", "scope:apps-script"],
+    "targets": {
+        "deploy": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["build"],
+            "options": {
+                "cwd": "packages/apps-script",
+                "command": "clasp push && clasp deploy -i \"${CLASP_DEPLOYMENT_ID:?Set CLASP_DEPLOYMENT_ID to the existing Web App deployment ID (see: clasp deployments)}\""
+            }
+        }
     }
-  }
 }

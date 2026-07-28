@@ -8,9 +8,9 @@
  * best-effort fallback for stores/lines that don't print codes.
  */
 export function normalizeItemName(rawName: string): string {
-  return rawName
-    .toUpperCase()
-    .replace(/[^A-Z0-9 ]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+    return rawName
+        .toUpperCase()
+        .replace(/[^A-Z0-9 ]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }

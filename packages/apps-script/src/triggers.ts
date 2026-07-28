@@ -1,12 +1,12 @@
 import type { Sheet } from './types.js';
 import {
-  CHECKBOX_VALIDATION,
-  PARTICIPANT_COLUMN_OFFSET,
-  PERCENT_VALIDATION,
-  SPLIT_TYPE_COLUMN,
-  getParticipantCount,
-  isEquallySplitRow,
-  isVariablySplitRow,
+    CHECKBOX_VALIDATION,
+    PARTICIPANT_COLUMN_OFFSET,
+    PERCENT_VALIDATION,
+    SPLIT_TYPE_COLUMN,
+    getParticipantCount,
+    isEquallySplitRow,
+    isVariablySplitRow,
 } from './sheetLayout.js';
 import { recalculateSettleUp } from './settleUp.js';
 
@@ -26,18 +26,18 @@ import { recalculateSettleUp } from './settleUp.js';
  * @param e - The edit event Apps Script provides to onEdit simple triggers.
  */
 export function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
-  Logger.log('Starting Edit');
-  const row = e.range.getRow();
-  const sheet = e.source.getActiveSheet();
-  const val = e.value;
-  const col = e.range.getColumn();
+    Logger.log('Starting Edit');
+    const row = e.range.getRow();
+    const sheet = e.source.getActiveSheet();
+    const val = e.value;
+    const col = e.range.getColumn();
 
-  if (row == 1) {
-    onHeaderChange(sheet, row, col, val);
-  } else {
-    onDataChange(sheet, row, col, val);
-  }
-  recalculateSettleUp(sheet);
+    if (row == 1) {
+        onHeaderChange(sheet, row, col, val);
+    } else {
+        onDataChange(sheet, row, col, val);
+    }
+    recalculateSettleUp(sheet);
 }
 
 /**
@@ -49,8 +49,8 @@ export function onEdit(e: GoogleAppsScript.Events.SheetsOnEdit): void {
  * @param _val - The cell's new value.
  */
 export function onHeaderChange(_sheet: Sheet, _row: number, _col: number, _val: string | undefined): void {
-  //TODO(SK) something, probably.
-  return;
+    //TODO(SK) something, probably.
+    return;
 }
 
 /**
@@ -62,11 +62,11 @@ export function onHeaderChange(_sheet: Sheet, _row: number, _col: number, _val: 
  * @param _val - The cell's new value.
  */
 export function onDataChange(sheet: Sheet, row: number, col: number, _val: string | undefined): void {
-  Logger.log('onDataChange');
+    Logger.log('onDataChange');
 
-  if (col == SPLIT_TYPE_COLUMN) {
-    onSplitTypeChanged(sheet, row);
-  }
+    if (col == SPLIT_TYPE_COLUMN) {
+        onSplitTypeChanged(sheet, row);
+    }
 }
 
 /**
@@ -80,25 +80,25 @@ export function onDataChange(sheet: Sheet, row: number, col: number, _val: strin
  * @param row - The row whose "How to split" value changed.
  */
 export function onSplitTypeChanged(sheet: Sheet, row: number): void {
-  Logger.log('onSplitTypeChanged');
+    Logger.log('onSplitTypeChanged');
 
-  const participantCount = getParticipantCount(sheet);
+    const participantCount = getParticipantCount(sheet);
 
-  const isEquallySplit = isEquallySplitRow(sheet, row);
-  const isVariablySplit = isVariablySplitRow(sheet, row);
+    const isEquallySplit = isEquallySplitRow(sheet, row);
+    const isVariablySplit = isVariablySplitRow(sheet, row);
 
-  for (let i = 0; i < participantCount; i++) {
-    const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
-    const range = sheet.getRange(row, col);
+    for (let i = 0; i < participantCount; i++) {
+        const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
+        const range = sheet.getRange(row, col);
 
-    // Update this row col to be a variable percentage split
-    if (isVariablySplit) {
-      range.setValue(100 / participantCount + '%');
-      range.setDataValidation(PERCENT_VALIDATION);
-      // Update this row col to be an equal, checkbox togglerable split
-    } else if (isEquallySplit) {
-      range.setValue(true);
-      range.setDataValidation(CHECKBOX_VALIDATION);
+        // Update this row col to be a variable percentage split
+        if (isVariablySplit) {
+            range.setValue(100 / participantCount + '%');
+            range.setDataValidation(PERCENT_VALIDATION);
+            // Update this row col to be an equal, checkbox togglerable split
+        } else if (isEquallySplit) {
+            range.setValue(true);
+            range.setDataValidation(CHECKBOX_VALIDATION);
+        }
     }
-  }
 }

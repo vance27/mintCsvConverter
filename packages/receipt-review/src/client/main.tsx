@@ -6,14 +6,14 @@ import { theme } from './theme.js';
 
 const container = document.getElementById('root');
 if (!container) {
-  throw new Error('#root element not found');
+    throw new Error('#root element not found');
 }
 
 createRoot(container).render(
-  <StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <App />
-    </ThemeProvider>
-  </StrictMode>,
+    <StrictMode>
+        <ThemeProvider theme={theme}>
+            <CssBaseline />
+            <App />
+        </ThemeProvider>
+    </StrictMode>,
 );

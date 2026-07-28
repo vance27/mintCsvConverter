@@ -1,76 +1,69 @@
 {
-  "$schema": "./node_modules/nx/schemas/nx-schema.json",
-  "targetDefaults": {
-    "build": {
-      "cache": true,
-      "dependsOn": [
-        "^build"
-      ],
-      "outputs": [
-        "{projectRoot}/dist"
-      ]
-    },
-    "test": {
-      "cache": true,
-      "dependsOn": [
-        "^build"
-      ]
-    },
-    "typecheck": {
-      "cache": true,
-      "dependsOn": [
-        "^build"
-      ]
-    },
-    "lint": {
-      "cache": true,
-      "dependsOn": [
-        "^build"
-      ]
-    }
-  },
-  "plugins": [
-    {
-      "plugin": "@nx/vitest",
-      "options": {
-        "testTargetName": "test",
-        "testMode": "run"
-      }
-    },
-    {
-      "plugin": "@nx/js/typescript",
-      "options": {
-        "typecheck": {
-          "targetName": "typecheck"
-        },
+    "$schema": "./node_modules/nx/schemas/nx-schema.json",
+    "targetDefaults": {
         "build": {
-          "targetName": "build",
-          "configName": "tsconfig.json"
+            "cache": true,
+            "dependsOn": ["^build"],
+            "outputs": ["{projectRoot}/dist"]
+        },
+        "test": {
+            "cache": true,
+            "dependsOn": ["^build"]
+        },
+        "typecheck": {
+            "cache": true,
+            "dependsOn": ["^build"]
+        },
+        "lint": {
+            "cache": true,
+            "dependsOn": ["^build"]
         }
-      }
     },
-    {
-      "plugin": "@nx/rollup/plugin",
-      "options": {
-        "buildTargetName": "build"
-      }
-    },
-    {
-      "plugin": "@nx/eslint/plugin",
-      "options": {
-        "targetName": "lint"
-      }
-    },
-    {
-      "plugin": "@nx/vite/plugin",
-      "options": {
-        "buildTargetName": "build",
-        "devTargetName": "serve",
-        "previewTargetName": "preview",
-        "serveStaticTargetName": "serve-static",
-        "typecheckTargetName": "vite-typecheck"
-      }
+    "plugins": [
+        {
+            "plugin": "@nx/vitest",
+            "options": {
+                "testTargetName": "test",
+                "testMode": "run"
+            }
+        },
+        {
+            "plugin": "@nx/js/typescript",
+            "options": {
+                "typecheck": {
+                    "targetName": "typecheck"
+                },
+                "build": {
+                    "targetName": "build",
+                    "configName": "tsconfig.json"
+                }
+            }
+        },
+        {
+            "plugin": "@nx/rollup/plugin",
+            "options": {
+                "buildTargetName": "build"
+            }
+        },
+        {
+            "plugin": "@nx/eslint/plugin",
+            "options": {
+                "targetName": "lint"
+            }
+        },
+        {
+            "plugin": "@nx/vite/plugin",
+            "options": {
+                "buildTargetName": "build",
+                "devTargetName": "serve",
+                "previewTargetName": "preview",
+                "serveStaticTargetName": "serve-static",
+                "typecheckTargetName": "vite-typecheck"
+            }
+        }
+    ],
+    "analytics": false,
+    "tui": {
+        "enabled": false
     }
-  ],
-  "analytics": false
 }

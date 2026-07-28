@@ -1,14 +1,14 @@
 {
-  "files": [],
-  "references": [
-    {
-      "path": "./packages/core"
-    },
-    {
-      "path": "./packages/automation"
-    },
-    {
-      "path": "./packages/receipts"
-    }
-  ]
+    "files": [],
+    "references": [
+        {
+            "path": "./packages/core"
+        },
+        {
+            "path": "./packages/automation"
+        },
+        {
+            "path": "./packages/receipts"
+        }
+    ]
 }

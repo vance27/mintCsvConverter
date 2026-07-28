@@ -1,25 +1,25 @@
 import { aggregateSplits, ReceiptStatus, type AggregateLine, type PrismaClient } from '@mint-csv-converter/receipts';
 
 export interface ReceiptSummary {
-  id: number;
-  store: string;
-  payer: string;
-  /** Null for a not-yet-extracted QUEUED/EXTRACTING/FAILED row. */
-  purchaseDate: string | null;
-  total: number | null;
-  cardAmount: number | null;
-  reconciled: boolean;
-  status: ReceiptStatus;
-  submittedAt: string | null;
-  lineItemCount: number;
-  /** Current dollar-weighted aggregate split (see aggregateSplits) — the even-split ingest default until reviewed. */
-  aggregate: Record<string, number>;
-  /** The uploaded file's own name — shown in place of store/date for a row that hasn't been extracted yet. Null for receipts ingested before this field existed. */
-  originalFilename: string | null;
-  /** Set only when status is FAILED. */
-  extractionError: string | null;
-  /** 1-based position among other QUEUED rows, oldest first; null for any other status. */
-  queuePosition: number | null;
+    id: number;
+    store: string;
+    payer: string;
+    /** Null for a not-yet-extracted QUEUED/EXTRACTING/FAILED row. */
+    purchaseDate: string | null;
+    total: number | null;
+    cardAmount: number | null;
+    reconciled: boolean;
+    status: ReceiptStatus;
+    submittedAt: string | null;
+    lineItemCount: number;
+    /** Current dollar-weighted aggregate split (see aggregateSplits) — the even-split ingest default until reviewed. */
+    aggregate: Record<string, number>;
+    /** The uploaded file's own name — shown in place of store/date for a row that hasn't been extracted yet. Null for receipts ingested before this field existed. */
+    originalFilename: string | null;
+    /** Set only when status is FAILED. */
+    extractionError: string | null;
+    /** 1-based position among other QUEUED rows, oldest first; null for any other status. */
+    queuePosition: number | null;
 }
 
 // Explicit priority instead of relying on enum-alphabetical order, now that
@@ -27,11 +27,11 @@ export interface ReceiptSummary {
 // is worth seeing live, QUEUED next, then needs-review (EXTRACTED, itself
 // sub-sorted by reconciled/purchaseDate below), SUBMITTED last.
 const STATUS_PRIORITY: Record<ReceiptStatus, number> = {
-  [ReceiptStatus.FAILED]: 0,
-  [ReceiptStatus.EXTRACTING]: 1,
-  [ReceiptStatus.QUEUED]: 2,
-  [ReceiptStatus.EXTRACTED]: 3,
-  [ReceiptStatus.SUBMITTED]: 4,
+    [ReceiptStatus.FAILED]: 0,
+    [ReceiptStatus.EXTRACTING]: 1,
+    [ReceiptStatus.QUEUED]: 2,
+    [ReceiptStatus.EXTRACTED]: 3,
+    [ReceiptStatus.SUBMITTED]: 4,
 };
 
 /**
@@ -41,174 +41,175 @@ const STATUS_PRIORITY: Record<ReceiptStatus, number> = {
  * SUBMITTED last.
  */
 export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary[]> {
-  const receipts = await prisma.receipt.findMany({
-    include: {
-      store: true,
-      payer: true,
-      _count: { select: { lineItems: true } },
-      lineItems: { include: { splits: { include: { participant: true } } } },
-    },
-  });
+    const receipts = await prisma.receipt.findMany({
+        include: {
+            store: true,
+            payer: true,
+            _count: { select: { lineItems: true } },
+            lineItems: { include: { splits: { include: { participant: true } } } },
+        },
+    });
 
-  const queuedByAge = receipts
-    .filter((r) => r.status === ReceiptStatus.QUEUED)
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  const queuePositionById = new Map(queuedByAge.map((r, i) => [r.id, i + 1]));
+    const queuedByAge = receipts
+        .filter((r) => r.status === ReceiptStatus.QUEUED)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const queuePositionById = new Map(queuedByAge.map((r, i) => [r.id, i + 1]));
 
-  const summaries = receipts.map((r) => {
-    const participantNames = [...new Set(r.lineItems.flatMap((li) => li.splits.map((s) => s.participant.name)))];
-    // aggregateSplits over zero line items (a placeholder row) returns
-    // all-zero shares — safe, no special-casing needed here.
-    const aggregateLines: AggregateLine[] = r.lineItems.map((li) => ({
-      lineTotal: li.lineTotal,
-      discountAmount: li.discountAmount,
-      splits: Object.fromEntries(li.splits.map((s) => [s.participant.name, s.percent])),
-    }));
-    return {
-      id: r.id,
-      store: r.store.name,
-      payer: r.payer.name,
-      purchaseDate: r.purchaseDate ? r.purchaseDate.toISOString() : null,
-      total: r.total,
-      cardAmount: r.cardAmount,
-      reconciled: r.reconciled,
-      status: r.status,
-      submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
-      lineItemCount: r._count.lineItems,
-      aggregate: aggregateSplits(aggregateLines, participantNames),
-      originalFilename: r.originalFilename,
-      extractionError: r.extractionError,
-      queuePosition: queuePositionById.get(r.id) ?? null,
-    };
-  });
+    const summaries = receipts.map((r) => {
+        const participantNames = [...new Set(r.lineItems.flatMap((li) => li.splits.map((s) => s.participant.name)))];
+        // aggregateSplits over zero line items (a placeholder row) returns
+        // all-zero shares — safe, no special-casing needed here.
+        const aggregateLines: AggregateLine[] = r.lineItems.map((li) => ({
+            lineTotal: li.lineTotal,
+            discountAmount: li.discountAmount,
+            splits: Object.fromEntries(li.splits.map((s) => [s.participant.name, s.percent])),
+        }));
+        return {
+            id: r.id,
+            store: r.store.name,
+            payer: r.payer.name,
+            purchaseDate: r.purchaseDate ? r.purchaseDate.toISOString() : null,
+            total: r.total,
+            cardAmount: r.cardAmount,
+            reconciled: r.reconciled,
+            status: r.status,
+            submittedAt: r.submittedAt ? r.submittedAt.toISOString() : null,
+            lineItemCount: r._count.lineItems,
+            aggregate: aggregateSplits(aggregateLines, participantNames),
+            originalFilename: r.originalFilename,
+            extractionError: r.extractionError,
+            queuePosition: queuePositionById.get(r.id) ?? null,
+        };
+    });
 
-  return summaries.sort((a, b) => {
-    const priorityDelta = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
-    if (priorityDelta !== 0) {
-      return priorityDelta;
-    }
-    if (a.status === ReceiptStatus.QUEUED) {
-      return (a.queuePosition ?? 0) - (b.queuePosition ?? 0);
-    }
-    if (a.reconciled !== b.reconciled) {
-      return a.reconciled ? 1 : -1;
-    }
-    return (a.purchaseDate ?? '').localeCompare(b.purchaseDate ?? '');
-  });
+    return summaries.sort((a, b) => {
+        const priorityDelta = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
+        if (priorityDelta !== 0) {
+            return priorityDelta;
+        }
+        if (a.status === ReceiptStatus.QUEUED) {
+            return (a.queuePosition ?? 0) - (b.queuePosition ?? 0);
+        }
+        if (a.reconciled !== b.reconciled) {
+            return a.reconciled ? 1 : -1;
+        }
+        return (a.purchaseDate ?? '').localeCompare(b.purchaseDate ?? '');
+    });
 }
 
 export interface PriceHistory {
-  previousUnitPrice: number | null;
-  /** Percent change vs. the most recent prior observation; null when there's no prior observation to compare against. */
-  changePercent: number | null;
+    previousUnitPrice: number | null;
+    /** Percent change vs. the most recent prior observation; null when there's no prior observation to compare against. */
+    changePercent: number | null;
 }
 
 export interface LineItemDetail {
-  id: number;
-  itemId: number | null;
-  rawItemCode: string | null;
-  rawName: string;
-  displayName: string | null;
-  unitPrice: number;
-  quantity: number;
-  lineTotal: number;
-  discountAmount: number;
-  reviewed: boolean;
-  splits: Record<string, number>;
-  priceHistory: PriceHistory;
-  /** Whether this item already had a learned typical split before this receipt. */
-  provenance: 'new' | 'learned';
+    id: number;
+    itemId: number | null;
+    rawItemCode: string | null;
+    rawName: string;
+    displayName: string | null;
+    unitPrice: number;
+    quantity: number;
+    lineTotal: number;
+    discountAmount: number;
+    reviewed: boolean;
+    splits: Record<string, number>;
+    priceHistory: PriceHistory;
+    /** Whether this item already had a learned typical split before this receipt. */
+    provenance: 'new' | 'learned';
 }
 
 export interface ReceiptDetail {
-  id: number;
-  store: string;
-  payer: string;
-  purchaseDate: string | null;
-  subtotal: number | null;
-  tax: number | null;
-  total: number | null;
-  cardAmount: number | null;
-  reconciled: boolean;
-  status: ReceiptStatus;
-  submittedAt: string | null;
-  originalFilename: string | null;
-  extractionError: string | null;
-  tenders: { kind: string; label: string; amount: number }[];
-  lineItems: LineItemDetail[];
+    id: number;
+    store: string;
+    payer: string;
+    purchaseDate: string | null;
+    subtotal: number | null;
+    tax: number | null;
+    total: number | null;
+    cardAmount: number | null;
+    reconciled: boolean;
+    status: ReceiptStatus;
+    submittedAt: string | null;
+    originalFilename: string | null;
+    extractionError: string | null;
+    tenders: { kind: string; label: string; amount: number }[];
+    lineItems: LineItemDetail[];
 }
 
 export async function getReceiptDetail(prisma: PrismaClient, receiptId: number): Promise<ReceiptDetail | null> {
-  const receipt = await prisma.receipt.findUnique({
-    where: { id: receiptId },
-    include: {
-      store: true,
-      payer: true,
-      tenders: true,
-      lineItems: { include: { item: true, splits: { include: { participant: true } } } },
-    },
-  });
-  if (!receipt) {
-    return null;
-  }
-
-  const lineItems: LineItemDetail[] = [];
-  for (const lineItem of receipt.lineItems) {
-    let priceHistory: PriceHistory = { previousUnitPrice: null, changePercent: null };
-    let provenance: 'new' | 'learned' = 'new';
-
-    if (lineItem.itemId) {
-      const [previousObservation, defaultCount] = await Promise.all([
-        prisma.priceObservation.findFirst({
-          where: { itemId: lineItem.itemId, receiptId: { not: receiptId } },
-          orderBy: { observedAt: 'desc' },
-        }),
-        prisma.itemSplitDefault.count({ where: { itemId: lineItem.itemId } }),
-      ]);
-      provenance = defaultCount > 0 ? 'learned' : 'new';
-      if (previousObservation) {
-        priceHistory = {
-          previousUnitPrice: previousObservation.unitPrice,
-          changePercent:
-            previousObservation.unitPrice > 0
-              ? ((lineItem.unitPrice - previousObservation.unitPrice) / previousObservation.unitPrice) * 100
-              : null,
-        };
-      }
+    const receipt = await prisma.receipt.findUnique({
+        where: { id: receiptId },
+        include: {
+            store: true,
+            payer: true,
+            tenders: true,
+            lineItems: { include: { item: true, splits: { include: { participant: true } } } },
+        },
+    });
+    if (!receipt) {
+        return null;
     }
 
-    lineItems.push({
-      id: lineItem.id,
-      itemId: lineItem.itemId,
-      rawItemCode: lineItem.rawItemCode,
-      rawName: lineItem.rawName,
-      displayName: lineItem.item?.displayName ?? null,
-      unitPrice: lineItem.unitPrice,
-      quantity: lineItem.quantity,
-      lineTotal: lineItem.lineTotal,
-      discountAmount: lineItem.discountAmount,
-      reviewed: lineItem.reviewed,
-      splits: Object.fromEntries(lineItem.splits.map((s) => [s.participant.name, s.percent])),
-      priceHistory,
-      provenance,
-    });
-  }
+    const lineItems: LineItemDetail[] = [];
+    for (const lineItem of receipt.lineItems) {
+        let priceHistory: PriceHistory = { previousUnitPrice: null, changePercent: null };
+        let provenance: 'new' | 'learned' = 'new';
 
-  return {
-    id: receipt.id,
-    store: receipt.store.name,
-    payer: receipt.payer.name,
-    purchaseDate: receipt.purchaseDate ? receipt.purchaseDate.toISOString() : null,
-    subtotal: receipt.subtotal,
-    tax: receipt.tax,
-    total: receipt.total,
-    cardAmount: receipt.cardAmount,
-    reconciled: receipt.reconciled,
-    status: receipt.status,
-    submittedAt: receipt.submittedAt ? receipt.submittedAt.toISOString() : null,
-    originalFilename: receipt.originalFilename,
-    extractionError: receipt.extractionError,
-    tenders: receipt.tenders.map((t) => ({ kind: t.kind, label: t.label, amount: t.amount })),
-    lineItems,
-  };
+        if (lineItem.itemId) {
+            const [previousObservation, defaultCount] = await Promise.all([
+                prisma.priceObservation.findFirst({
+                    where: { itemId: lineItem.itemId, receiptId: { not: receiptId } },
+                    orderBy: { observedAt: 'desc' },
+                }),
+                prisma.itemSplitDefault.count({ where: { itemId: lineItem.itemId } }),
+            ]);
+            provenance = defaultCount > 0 ? 'learned' : 'new';
+            if (previousObservation) {
+                priceHistory = {
+                    previousUnitPrice: previousObservation.unitPrice,
+                    changePercent:
+                        previousObservation.unitPrice > 0
+                            ? ((lineItem.unitPrice - previousObservation.unitPrice) / previousObservation.unitPrice) *
+                              100
+                            : null,
+                };
+            }
+        }
+
+        lineItems.push({
+            id: lineItem.id,
+            itemId: lineItem.itemId,
+            rawItemCode: lineItem.rawItemCode,
+            rawName: lineItem.rawName,
+            displayName: lineItem.item?.displayName ?? null,
+            unitPrice: lineItem.unitPrice,
+            quantity: lineItem.quantity,
+            lineTotal: lineItem.lineTotal,
+            discountAmount: lineItem.discountAmount,
+            reviewed: lineItem.reviewed,
+            splits: Object.fromEntries(lineItem.splits.map((s) => [s.participant.name, s.percent])),
+            priceHistory,
+            provenance,
+        });
+    }
+
+    return {
+        id: receipt.id,
+        store: receipt.store.name,
+        payer: receipt.payer.name,
+        purchaseDate: receipt.purchaseDate ? receipt.purchaseDate.toISOString() : null,
+        subtotal: receipt.subtotal,
+        tax: receipt.tax,
+        total: receipt.total,
+        cardAmount: receipt.cardAmount,
+        reconciled: receipt.reconciled,
+        status: receipt.status,
+        submittedAt: receipt.submittedAt ? receipt.submittedAt.toISOString() : null,
+        originalFilename: receipt.originalFilename,
+        extractionError: receipt.extractionError,
+        tenders: receipt.tenders.map((t) => ({ kind: t.kind, label: t.label, amount: t.amount })),
+        lineItems,
+    };
 }

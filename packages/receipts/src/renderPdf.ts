@@ -7,10 +7,10 @@ import { pdf } from 'pdf-to-img';
  * path is the baseline extraction strategy, not a fallback.
  */
 export async function renderPdfPages(pdfPath: string, scale = 3): Promise<Buffer[]> {
-  const document = await pdf(pdfPath, { scale });
-  const pages: Buffer[] = [];
-  for await (const page of document) {
-    pages.push(page);
-  }
-  return pages;
+    const document = await pdf(pdfPath, { scale });
+    const pages: Buffer[] = [];
+    for await (const page of document) {
+        pages.push(page);
+    }
+    return pages;
 }

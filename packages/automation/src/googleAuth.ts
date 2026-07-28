@@ -4,8 +4,8 @@ import { OAuth2Client, type Credentials } from 'google-auth-library';
 
 /** Where the OAuth token captured by scripts/authorize.ts is stored (mirrors syncState.ts's convention). */
 export function defaultTokenPath(): string {
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
-  return `${home}/.config/mint-csv-converter/google-token.json`;
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
+    return `${home}/.config/mint-csv-converter/google-token.json`;
 }
 
 /**
@@ -19,27 +19,31 @@ export function defaultTokenPath(): string {
  * @returns An OAuth2Client with the saved credentials applied.
  * @throws If no saved token exists.
  */
-export function loadSavedCredentialsOrThrow(clientId: string, clientSecret: string, tokenPath: string = defaultTokenPath()): OAuth2Client {
-  if (!existsSync(tokenPath)) {
-    throw new Error(
-      `No saved Google OAuth token at ${tokenPath} — run the authorize script first: ` +
-        "pnpm --filter @mint-csv-converter/automation exec tsx src/scripts/authorize.ts (see this package's README).",
-    );
-  }
+export function loadSavedCredentialsOrThrow(
+    clientId: string,
+    clientSecret: string,
+    tokenPath: string = defaultTokenPath(),
+): OAuth2Client {
+    if (!existsSync(tokenPath)) {
+        throw new Error(
+            `No saved Google OAuth token at ${tokenPath} — run the authorize script first: ` +
+                "pnpm --filter @mint-csv-converter/automation exec tsx src/scripts/authorize.ts (see this package's README).",
+        );
+    }
 
-  const credentials = JSON.parse(readFileSync(tokenPath, 'utf-8')) as Credentials;
-  const client = new OAuth2Client({ clientId, clientSecret });
-  client.setCredentials(credentials);
-  return client;
+    const credentials = JSON.parse(readFileSync(tokenPath, 'utf-8')) as Credentials;
+    const client = new OAuth2Client({ clientId, clientSecret });
+    client.setCredentials(credentials);
+    return client;
 }
 
 /** Persists OAuth credentials (from scripts/authorize.ts's interactive flow) for later reuse. */
 export function saveCredentials(credentials: Credentials, tokenPath: string = defaultTokenPath()): void {
-  mkdirSync(dirname(tokenPath), { recursive: true });
-  writeFileSync(tokenPath, JSON.stringify(credentials, null, 2) + '\n', 'utf-8');
+    mkdirSync(dirname(tokenPath), { recursive: true });
+    writeFileSync(tokenPath, JSON.stringify(credentials, null, 2) + '\n', 'utf-8');
 }
 
 /** Whether a saved OAuth token exists — doesn't validate it's still accepted by Google, just present on disk. */
 export function hasSavedCredentials(tokenPath: string = defaultTokenPath()): boolean {
-  return existsSync(tokenPath);
+    return existsSync(tokenPath);
 }

@@ -15,67 +15,69 @@ let activeSpreadsheet: FakeSpreadsheet | undefined;
 let scriptProperties: Record<string, string> = {};
 
 export function installFakeGasGlobals(): void {
-  vi.stubGlobal('Logger', {
-    log: (..._args: unknown[]) => {
-      // Intentionally silent in tests.
-    },
-  });
-
-  vi.stubGlobal('SpreadsheetApp', {
-    newDataValidation: () => {
-      const builder = {
-        requireCheckbox: () => builder,
-        requireFormulaSatisfied: (_formula: string) => builder,
-        build: () => ({ __fakeDataValidation: true }),
-      };
-      return builder;
-    },
-    getActiveSpreadsheet: () => {
-      if (!activeSpreadsheet) {
-        throw new Error('Call setActiveSpreadsheetForTest() before code that uses SpreadsheetApp.getActiveSpreadsheet()');
-      }
-      return activeSpreadsheet.asSpreadsheet();
-    },
-  });
-
-  vi.stubGlobal('PropertiesService', {
-    getScriptProperties: () => ({
-      getProperty: (key: string) => scriptProperties[key] ?? null,
-    }),
-  });
-
-  vi.stubGlobal('ContentService', {
-    MimeType: { JSON: 'application/json' },
-    createTextOutput: (text: string) => {
-      let mimeType: string | undefined;
-      const output = {
-        getContent: () => text,
-        getMimeType: () => mimeType,
-        setMimeType(type: string) {
-          mimeType = type;
-          return output;
+    vi.stubGlobal('Logger', {
+        log: (..._args: unknown[]) => {
+            // Intentionally silent in tests.
         },
-      };
-      return output;
-    },
-  });
+    });
+
+    vi.stubGlobal('SpreadsheetApp', {
+        newDataValidation: () => {
+            const builder = {
+                requireCheckbox: () => builder,
+                requireFormulaSatisfied: (_formula: string) => builder,
+                build: () => ({ __fakeDataValidation: true }),
+            };
+            return builder;
+        },
+        getActiveSpreadsheet: () => {
+            if (!activeSpreadsheet) {
+                throw new Error(
+                    'Call setActiveSpreadsheetForTest() before code that uses SpreadsheetApp.getActiveSpreadsheet()',
+                );
+            }
+            return activeSpreadsheet.asSpreadsheet();
+        },
+    });
+
+    vi.stubGlobal('PropertiesService', {
+        getScriptProperties: () => ({
+            getProperty: (key: string) => scriptProperties[key] ?? null,
+        }),
+    });
+
+    vi.stubGlobal('ContentService', {
+        MimeType: { JSON: 'application/json' },
+        createTextOutput: (text: string) => {
+            let mimeType: string | undefined;
+            const output = {
+                getContent: () => text,
+                getMimeType: () => mimeType,
+                setMimeType(type: string) {
+                    mimeType = type;
+                    return output;
+                },
+            };
+            return output;
+        },
+    });
 }
 
 /** Controls what `SpreadsheetApp.getActiveSpreadsheet()` returns in tests. */
 export function setActiveSpreadsheetForTest(spreadsheet: FakeSpreadsheet | undefined): void {
-  activeSpreadsheet = spreadsheet;
+    activeSpreadsheet = spreadsheet;
 }
 
 /** Controls what `PropertiesService.getScriptProperties().getProperty(key)` returns in tests. */
 export function setScriptPropertyForTest(key: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete scriptProperties[key];
-  } else {
-    scriptProperties[key] = value;
-  }
+    if (value === undefined) {
+        delete scriptProperties[key];
+    } else {
+        scriptProperties[key] = value;
+    }
 }
 
 /** Clears all script properties set via setScriptPropertyForTest. */
 export function resetScriptPropertiesForTest(): void {
-  scriptProperties = {};
+    scriptProperties = {};
 }

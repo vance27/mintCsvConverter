@@ -1,12 +1,12 @@
 {
-  "name": "@mint-csv-converter/core",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "dependencies": {
-    "csv-parse": "7.0.1",
-    "csv-stringify": "6.8.1"
-  }
+    "name": "@mint-csv-converter/core",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "dependencies": {
+        "csv-parse": "7.0.1",
+        "csv-stringify": "6.8.1"
+    }
 }

@@ -1,19 +1,15 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "types": ["node"],
-    "noEmit": true
-  },
-  "include": ["src/server", "vite.config.ts", "vitest.config.ts"],
-  "references": [
-    { "path": "../receipts/tsconfig.json" },
-    { "path": "../core" },
-    { "path": "../automation" }
-  ]
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true,
+        "types": ["node"],
+        "noEmit": true
+    },
+    "include": ["src/server", "vite.config.ts", "vitest.config.ts"],
+    "references": [{ "path": "../receipts/tsconfig.json" }, { "path": "../core" }, { "path": "../automation" }]
 }

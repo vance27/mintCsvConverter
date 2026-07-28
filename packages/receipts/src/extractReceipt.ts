@@ -5,29 +5,29 @@ import { foldDiscountReferenceLines } from './discountReferenceLines.js';
 import type { ExtractedReceipt } from './types.js';
 
 const lineItemSchema = z.object({
-  itemCode: z.string().nullable().default(null),
-  rawName: z.string(),
-  quantity: z.coerce.number().default(1),
-  unitPrice: z.coerce.number(),
-  lineTotal: z.coerce.number(),
-  taxable: z.boolean().nullable().default(null),
-  discountAmount: z.coerce.number().default(0),
+    itemCode: z.string().nullable().default(null),
+    rawName: z.string(),
+    quantity: z.coerce.number().default(1),
+    unitPrice: z.coerce.number(),
+    lineTotal: z.coerce.number(),
+    taxable: z.boolean().nullable().default(null),
+    discountAmount: z.coerce.number().default(0),
 });
 
 const tenderSchema = z.object({
-  kind: z.enum(['CARD', 'CASH', 'COSTCO_CASH_REWARD', 'OTHER']),
-  label: z.string(),
-  amount: z.coerce.number(),
+    kind: z.enum(['CARD', 'CASH', 'COSTCO_CASH_REWARD', 'OTHER']),
+    label: z.string(),
+    amount: z.coerce.number(),
 });
 
 const receiptSchema = z.object({
-  store: z.string().nullable().default(null),
-  purchaseDate: z.string(),
-  subtotal: z.coerce.number(),
-  tax: z.coerce.number(),
-  total: z.coerce.number(),
-  items: z.array(lineItemSchema),
-  tenders: z.array(tenderSchema).default([]),
+    store: z.string().nullable().default(null),
+    purchaseDate: z.string(),
+    subtotal: z.coerce.number(),
+    tax: z.coerce.number(),
+    total: z.coerce.number(),
+    items: z.array(lineItemSchema),
+    tenders: z.array(tenderSchema).default([]),
 });
 
 const RECEIPT_JSON_SCHEMA = z.toJSONSchema(receiptSchema);
@@ -81,14 +81,14 @@ const GENERIC_PROMPT = `You are reading a store receipt image. Extract every pur
 
 /** Selects the extraction prompt for a given store — Costco is tuned for v1; other stores fall back to a generic prompt. */
 export function buildExtractionPrompt(store: string | undefined): string {
-  return store?.toLowerCase() === 'costco' ? COSTCO_PROMPT : GENERIC_PROMPT;
+    return store?.toLowerCase() === 'costco' ? COSTCO_PROMPT : GENERIC_PROMPT;
 }
 
 export interface ExtractReceiptOptions {
-  store?: string;
-  model?: string;
-  /** Aborts the in-flight VLM call — see UploadQueue.cancel in packages/receipt-review. */
-  signal?: AbortSignal;
+    store?: string;
+    model?: string;
+    /** Aborts the in-flight VLM call — see UploadQueue.cancel in packages/receipt-review. */
+    signal?: AbortSignal;
 }
 
 /**
@@ -98,32 +98,32 @@ export interface ExtractReceiptOptions {
  * rather than propagating silently).
  */
 export async function extractReceipt(
-  pdfPath: string,
-  client: VisionChatClient,
-  options: ExtractReceiptOptions = {},
+    pdfPath: string,
+    client: VisionChatClient,
+    options: ExtractReceiptOptions = {},
 ): Promise<ExtractedReceipt> {
-  const pages = await renderPdfPages(pdfPath);
-  const images = pages.map((page) => page.toString('base64'));
+    const pages = await renderPdfPages(pdfPath);
+    const images = pages.map((page) => page.toString('base64'));
 
-  const response = await client.chat(
-    {
-      model: options.model ?? defaultOllamaModel(),
-      messages: [{ role: 'user', content: buildExtractionPrompt(options.store), images }],
-      format: RECEIPT_JSON_SCHEMA,
-    },
-    options.signal,
-  );
+    const response = await client.chat(
+        {
+            model: options.model ?? defaultOllamaModel(),
+            messages: [{ role: 'user', content: buildExtractionPrompt(options.store), images }],
+            format: RECEIPT_JSON_SCHEMA,
+        },
+        options.signal,
+    );
 
-  let parsedJson: unknown;
-  try {
-    parsedJson = JSON.parse(response.message.content);
-  } catch (cause) {
-    throw new Error(`Model did not return valid JSON: ${response.message.content}`, { cause });
-  }
+    let parsedJson: unknown;
+    try {
+        parsedJson = JSON.parse(response.message.content);
+    } catch (cause) {
+        throw new Error(`Model did not return valid JSON: ${response.message.content}`, { cause });
+    }
 
-  const result = receiptSchema.safeParse(parsedJson);
-  if (!result.success) {
-    throw new Error(`Model's extracted receipt failed validation: ${z.prettifyError(result.error)}`);
-  }
-  return { ...result.data, items: foldDiscountReferenceLines(result.data.items) };
+    const result = receiptSchema.safeParse(parsedJson);
+    if (!result.success) {
+        throw new Error(`Model's extracted receipt failed validation: ${z.prettifyError(result.error)}`);
+    }
+    return { ...result.data, items: foldDiscountReferenceLines(result.data.items) };
 }

@@ -14,11 +14,11 @@ const AMOUNT_TOLERANCE = 0.01;
 const DESCRIPTION_DATE_PATTERN = /^(.*) (\d{2}\/\d{2}\/\d{4})$/;
 
 function splitDescriptionAndDate(value: string): { description: string; date: string } {
-  const match = DESCRIPTION_DATE_PATTERN.exec(value);
-  if (!match) {
-    throw new Error(`Expected "<description> MM/DD/YYYY", got: ${value}`);
-  }
-  return { description: match[1], date: match[2] };
+    const match = DESCRIPTION_DATE_PATTERN.exec(value);
+    if (!match) {
+        throw new Error(`Expected "<description> MM/DD/YYYY", got: ${value}`);
+    }
+    return { description: match[1], date: match[2] };
 }
 
 /**
@@ -33,34 +33,34 @@ function splitDescriptionAndDate(value: string): { description: string; date: st
  * placeholder behavior — this must never block a sync.
  */
 export function matchManifestEntry(
-  row: TransactionRow,
-  payerName: string,
-  entries: ManifestEntry[],
+    row: TransactionRow,
+    payerName: string,
+    entries: ManifestEntry[],
 ): Record<string, number> | null {
-  const { description, date } = splitDescriptionAndDate(row[0]);
-  const amount = Number.parseFloat(row[2]);
+    const { description, date } = splitDescriptionAndDate(row[0]);
+    const amount = Number.parseFloat(row[2]);
 
-  const candidates = entries.filter(
-    (entry) =>
-      entry.payer.toLowerCase() === payerName.toLowerCase() &&
-      description.toLowerCase().includes(entry.store.toLowerCase()) &&
-      Math.abs(amount - entry.cardAmount) <= AMOUNT_TOLERANCE,
-  );
+    const candidates = entries.filter(
+        (entry) =>
+            entry.payer.toLowerCase() === payerName.toLowerCase() &&
+            description.toLowerCase().includes(entry.store.toLowerCase()) &&
+            Math.abs(amount - entry.cardAmount) <= AMOUNT_TOLERANCE,
+    );
 
-  if (candidates.length === 0) {
-    return null;
-  }
-  if (candidates.length === 1) {
-    return candidates[0].percentages;
-  }
+    if (candidates.length === 0) {
+        return null;
+    }
+    if (candidates.length === 1) {
+        return candidates[0].percentages;
+    }
 
-  // Multiple receipts at the same store, same day, same amount — tiebreak
-  // on whichever purchaseDate is closest to the transaction's date.
-  const transactionMs = Date.parse(toIsoDate(date));
-  const closest = candidates.reduce((best, entry) => {
-    const bestDelta = Math.abs(Date.parse(best.purchaseDate) - transactionMs);
-    const entryDelta = Math.abs(Date.parse(entry.purchaseDate) - transactionMs);
-    return entryDelta < bestDelta ? entry : best;
-  });
-  return closest.percentages;
+    // Multiple receipts at the same store, same day, same amount — tiebreak
+    // on whichever purchaseDate is closest to the transaction's date.
+    const transactionMs = Date.parse(toIsoDate(date));
+    const closest = candidates.reduce((best, entry) => {
+        const bestDelta = Math.abs(Date.parse(best.purchaseDate) - transactionMs);
+        const entryDelta = Math.abs(Date.parse(entry.purchaseDate) - transactionMs);
+        return entryDelta < bestDelta ? entry : best;
+    });
+    return closest.percentages;
 }

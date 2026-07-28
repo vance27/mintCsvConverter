@@ -2,44 +2,44 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface AuditLineItem {
-  name: string;
-  unitPrice: number;
-  quantity: number;
-  lineTotal: number;
-  splits: Record<string, number>;
+    name: string;
+    unitPrice: number;
+    quantity: number;
+    lineTotal: number;
+    splits: Record<string, number>;
 }
 
 export interface AuditReportData {
-  receiptId: number;
-  store: string;
-  payer: string;
-  purchaseDate: string;
-  total: number;
-  lineItems: AuditLineItem[];
-  aggregate: Record<string, number>;
+    receiptId: number;
+    store: string;
+    payer: string;
+    purchaseDate: string;
+    total: number;
+    lineItems: AuditLineItem[];
+    aggregate: Record<string, number>;
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /** A permanent, human-readable record of what was submitted — the "generated audit copy" from the design doc. Plain template, no templating dependency needed. */
 export function generateAuditHtml(data: AuditReportData): string {
-  const participants = Object.keys(data.aggregate);
+    const participants = Object.keys(data.aggregate);
 
-  const rows = data.lineItems
-    .map((line) => {
-      const shareCells = participants
-        .map((name) => `<td>$${((line.lineTotal * (line.splits[name] ?? 0)) / 100).toFixed(2)}</td>`)
-        .join('');
-      return `<tr><td>${escapeHtml(line.name)}</td><td>$${line.unitPrice.toFixed(2)}</td><td>${line.quantity}</td><td>$${line.lineTotal.toFixed(2)}</td>${shareCells}</tr>`;
-    })
-    .join('\n');
+    const rows = data.lineItems
+        .map((line) => {
+            const shareCells = participants
+                .map((name) => `<td>$${((line.lineTotal * (line.splits[name] ?? 0)) / 100).toFixed(2)}</td>`)
+                .join('');
+            return `<tr><td>${escapeHtml(line.name)}</td><td>$${line.unitPrice.toFixed(2)}</td><td>${line.quantity}</td><td>$${line.lineTotal.toFixed(2)}</td>${shareCells}</tr>`;
+        })
+        .join('\n');
 
-  const shareHeaders = participants.map((name) => `<th>${escapeHtml(name)}'s share</th>`).join('');
-  const aggregateSummary = participants.map((name) => `${escapeHtml(name)}: ${data.aggregate[name]}%`).join(', ');
+    const shareHeaders = participants.map((name) => `<th>${escapeHtml(name)}'s share</th>`).join('');
+    const aggregateSummary = participants.map((name) => `${escapeHtml(name)}: ${data.aggregate[name]}%`).join(', ');
 
-  return `<!doctype html>
+    return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
@@ -69,13 +69,13 @@ ${rows}
 }
 
 export function defaultAuditDir(): string {
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
-  return `${home}/.config/mint-csv-converter/receipt-audits`;
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
+    return `${home}/.config/mint-csv-converter/receipt-audits`;
 }
 
 export function writeAuditHtml(receiptId: number, html: string, baseDir: string = defaultAuditDir()): string {
-  mkdirSync(baseDir, { recursive: true });
-  const path = join(baseDir, `${receiptId}.html`);
-  writeFileSync(path, html, 'utf-8');
-  return path;
+    mkdirSync(baseDir, { recursive: true });
+    const path = join(baseDir, `${receiptId}.html`);
+    writeFileSync(path, html, 'utf-8');
+    return path;
 }

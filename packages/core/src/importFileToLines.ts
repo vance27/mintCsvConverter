@@ -8,13 +8,13 @@ import { readRawCsvGrid } from './rawCsvGrid.js';
  * Pass a different CsvColumnMapping to import a differently-shaped export.
  */
 export class ImportFileToLines {
-  constructor(
-    private readonly file: string,
-    private readonly mapping: CsvColumnMapping = CITI_DEFAULT_MAPPING,
-  ) {}
+    constructor(
+        private readonly file: string,
+        private readonly mapping: CsvColumnMapping = CITI_DEFAULT_MAPPING,
+    ) {}
 
-  getResults(): string[][] {
-    console.log('Importing file, converting to lines');
-    return applyColumnMapping(readRawCsvGrid(this.file), this.mapping);
-  }
+    getResults(): string[][] {
+        console.log('Importing file, converting to lines');
+        return applyColumnMapping(readRawCsvGrid(this.file), this.mapping);
+    }
 }

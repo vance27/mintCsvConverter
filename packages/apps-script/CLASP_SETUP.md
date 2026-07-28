@@ -22,7 +22,7 @@ the web editor (Option A in the main README) still works fine as a one-off.
   <https://script.google.com/home/usersettings> and turn on **Google Apps
   Script API**. This is a per-account setting, separate from any
   project-level API enablement — `clasp` will fail with `User has not
-  enabled the Apps Script API` until this is on.
+enabled the Apps Script API` until this is on.
 
 ## 2. Install and log in
 
@@ -116,8 +116,8 @@ your diff of `src/Code.ts` before pushing, same as any other deploy.
 
 Push (step 6) updates the code the editor shows and what `clasp run` (see
 below) executes, but it does **not** by itself change what a live
-deployment serves — a deployment pins a specific *version* of the code.
-`clasp` can update an *existing* deployment (keeping its ID stable) rather
+deployment serves — a deployment pins a specific _version_ of the code.
+`clasp` can update an _existing_ deployment (keeping its ID stable) rather
 than accidentally creating a new one:
 
 ```bash
@@ -156,7 +156,7 @@ is one-time GCP Console setup, not something `clasp`/this repo can drive:
    enabled separately from the Apps Script API above — easy to miss, since
    nothing else in this setup prompts for it. If you skip this, the first
    sync run fails with `Google Sheets API has not been used in project
-   <number> before or it is disabled`, with a direct enable link in the
+<number> before or it is disabled`, with a direct enable link in the
    error; enabling it there works just as well, just wait a minute or two
    for it to propagate before retrying.
 4. **Create an OAuth consent screen**: APIs & Services → OAuth consent

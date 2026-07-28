@@ -1,81 +1,81 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "tags": ["type:lib", "scope:receipts"],
-  "metadata": {
-    "targetGroups": {
-      "prisma": ["prisma-generate", "prisma-migrate", "prisma-studio"]
+    "$schema": "../../node_modules/nx/schemas/project-schema.json",
+    "tags": ["type:lib", "scope:receipts"],
+    "metadata": {
+        "targetGroups": {
+            "prisma": ["prisma-generate", "prisma-migrate", "prisma-studio"]
+        }
+    },
+    "targets": {
+        "prisma-generate": {
+            "executor": "nx:run-commands",
+            "cache": true,
+            "inputs": ["{projectRoot}/prisma/schema.prisma", "{projectRoot}/prisma.config.ts"],
+            "outputs": ["{projectRoot}/src/generated"],
+            "options": {
+                "cwd": "packages/receipts",
+                "command": "prisma generate"
+            }
+        },
+        "prisma-migrate": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "options": {
+                "cwd": "packages/receipts",
+                "command": "prisma migrate deploy"
+            }
+        },
+        "prisma-studio": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "options": {
+                "cwd": "packages/receipts",
+                "command": "prisma studio"
+            }
+        },
+        "build": {
+            "dependsOn": ["prisma-generate", "^build"]
+        },
+        "typecheck": {
+            "dependsOn": ["prisma-generate", "^build"]
+        },
+        "test": {
+            "dependsOn": ["prisma-generate"]
+        },
+        "lint": {
+            "dependsOn": ["prisma-generate"]
+        },
+        "seed": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["prisma-generate", "prisma-migrate"],
+            "options": {
+                "command": "node --import tsx packages/receipts/src/scripts/seed.ts"
+            }
+        },
+        "ingest": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["prisma-generate", "prisma-migrate"],
+            "options": {
+                "command": "node --import tsx packages/receipts/src/scripts/ingest.ts"
+            }
+        },
+        "snapshot": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["prisma-generate", "prisma-migrate"],
+            "options": {
+                "command": "node --import tsx packages/receipts/src/scripts/snapshot.ts"
+            }
+        },
+        "restore": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["prisma-generate", "prisma-migrate"],
+            "options": {
+                "command": "node --import tsx packages/receipts/src/scripts/restore.ts"
+            }
+        }
     }
-  },
-  "targets": {
-    "prisma-generate": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "inputs": ["{projectRoot}/prisma/schema.prisma", "{projectRoot}/prisma.config.ts"],
-      "outputs": ["{projectRoot}/src/generated"],
-      "options": {
-        "cwd": "packages/receipts",
-        "command": "prisma generate"
-      }
-    },
-    "prisma-migrate": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "cwd": "packages/receipts",
-        "command": "prisma migrate deploy"
-      }
-    },
-    "prisma-studio": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "cwd": "packages/receipts",
-        "command": "prisma studio"
-      }
-    },
-    "build": {
-      "dependsOn": ["prisma-generate", "^build"]
-    },
-    "typecheck": {
-      "dependsOn": ["prisma-generate", "^build"]
-    },
-    "test": {
-      "dependsOn": ["prisma-generate"]
-    },
-    "lint": {
-      "dependsOn": ["prisma-generate"]
-    },
-    "seed": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["prisma-generate", "prisma-migrate"],
-      "options": {
-        "command": "node --import tsx packages/receipts/src/scripts/seed.ts"
-      }
-    },
-    "ingest": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["prisma-generate", "prisma-migrate"],
-      "options": {
-        "command": "node --import tsx packages/receipts/src/scripts/ingest.ts"
-      }
-    },
-    "snapshot": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["prisma-generate", "prisma-migrate"],
-      "options": {
-        "command": "node --import tsx packages/receipts/src/scripts/snapshot.ts"
-      }
-    },
-    "restore": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["prisma-generate", "prisma-migrate"],
-      "options": {
-        "command": "node --import tsx packages/receipts/src/scripts/restore.ts"
-      }
-    }
-  }
 }

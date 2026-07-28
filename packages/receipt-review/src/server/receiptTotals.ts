@@ -1,7 +1,7 @@
 import { RECONCILE_TOLERANCE, type PrismaClient } from '@mint-csv-converter/receipts';
 
 function round2(n: number): number {
-  return Math.round(n * 100) / 100;
+    return Math.round(n * 100) / 100;
 }
 
 /**
@@ -21,16 +21,16 @@ function round2(n: number): number {
  * "reconciled" reflects here instead of a full reconcile() call.
  */
 export async function recomputeReceiptTotals(prisma: PrismaClient, receiptId: number): Promise<void> {
-  const [lineItems, tenders, receipt] = await Promise.all([
-    prisma.lineItem.findMany({ where: { receiptId } }),
-    prisma.receiptTender.findMany({ where: { receiptId } }),
-    prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } }),
-  ]);
+    const [lineItems, tenders, receipt] = await Promise.all([
+        prisma.lineItem.findMany({ where: { receiptId } }),
+        prisma.receiptTender.findMany({ where: { receiptId } }),
+        prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } }),
+    ]);
 
-  const subtotal = round2(lineItems.reduce((sum, li) => sum + (li.lineTotal - li.discountAmount), 0));
-  const total = round2(subtotal + (receipt.tax ?? 0));
-  const tenderSum = tenders.reduce((sum, t) => sum + t.amount, 0);
-  const reconciled = tenders.length === 0 || Math.abs(tenderSum - total) <= RECONCILE_TOLERANCE;
+    const subtotal = round2(lineItems.reduce((sum, li) => sum + (li.lineTotal - li.discountAmount), 0));
+    const total = round2(subtotal + (receipt.tax ?? 0));
+    const tenderSum = tenders.reduce((sum, t) => sum + t.amount, 0);
+    const reconciled = tenders.length === 0 || Math.abs(tenderSum - total) <= RECONCILE_TOLERANCE;
 
-  await prisma.receipt.update({ where: { id: receiptId }, data: { subtotal, total, reconciled } });
+    await prisma.receipt.update({ where: { id: receiptId }, data: { subtotal, total, reconciled } });
 }

@@ -25,7 +25,7 @@ export const PERCENT_VALIDATION = buildPercentValidation();
  * @returns A checkbox data validation rule.
  */
 export function buildCheckboxValidation(): GoogleAppsScript.Spreadsheet.DataValidation {
-  return SpreadsheetApp.newDataValidation().requireCheckbox().build();
+    return SpreadsheetApp.newDataValidation().requireCheckbox().build();
 }
 
 /**
@@ -35,9 +35,9 @@ export function buildCheckboxValidation(): GoogleAppsScript.Spreadsheet.DataVali
  * @returns A formula-based data validation rule for percentage strings.
  */
 export function buildPercentValidation(): GoogleAppsScript.Spreadsheet.DataValidation {
-  const formula =
-    '=REGEXMATCH(TO_TEXT(INDIRECT(CONCATENATE("R", TO_TEXT(ROW()), "C", TO_TEXT(COLUMN())), FALSE)), "^\\d+(?:\\.\\d+)?%$")';
-  return SpreadsheetApp.newDataValidation().requireFormulaSatisfied(formula).build();
+    const formula =
+        '=REGEXMATCH(TO_TEXT(INDIRECT(CONCATENATE("R", TO_TEXT(ROW()), "C", TO_TEXT(COLUMN())), FALSE)), "^\\d+(?:\\.\\d+)?%$")';
+    return SpreadsheetApp.newDataValidation().requireFormulaSatisfied(formula).build();
 }
 
 /**
@@ -57,24 +57,24 @@ export function buildPercentValidation(): GoogleAppsScript.Spreadsheet.DataValid
  *   exists; see the `alert` note inside.
  */
 export function getTotalRowAnchor(sheet: Sheet): number | undefined {
-  const range = sheet.getRange(2, PARTICIPANT_COLUMN_OFFSET, MAX_ROWS_TO_SEARCH, 1);
-  const values = range.getValues();
-  for (let i = 0; i < values.length; i++) {
-    // Relies on JS's array-to-string coercion (a single-element array
-    // stringifies to just that element) — preserved exactly as original
-    // rather than switched to values[i][0], which is a different (also
-    // correct) way to write this but not what the live script does.
-    if ((values[i] as unknown) == 'TOTAL OWING') {
-      return i + 1;
+    const range = sheet.getRange(2, PARTICIPANT_COLUMN_OFFSET, MAX_ROWS_TO_SEARCH, 1);
+    const values = range.getValues();
+    for (let i = 0; i < values.length; i++) {
+        // Relies on JS's array-to-string coercion (a single-element array
+        // stringifies to just that element) — preserved exactly as original
+        // rather than switched to values[i][0], which is a different (also
+        // correct) way to write this but not what the live script does.
+        if ((values[i] as unknown) == 'TOTAL OWING') {
+            return i + 1;
+        }
     }
-  }
-  // NOTE: `alert` is not a real Apps Script/JS global — preserved as-is
-  // from the original rather than "fixed"; this branch is unreachable in
-  // normal use since a real "TOTAL OWING" row always exists.
-  // @ts-expect-error - see note above
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- see note above
-  alert('Could not find total row');
-  return undefined;
+    // NOTE: `alert` is not a real Apps Script/JS global — preserved as-is
+    // from the original rather than "fixed"; this branch is unreachable in
+    // normal use since a real "TOTAL OWING" row always exists.
+    // @ts-expect-error - see note above
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- see note above
+    alert('Could not find total row');
+    return undefined;
 }
 
 /**
@@ -84,8 +84,8 @@ export function getTotalRowAnchor(sheet: Sheet): number | undefined {
  * @returns The number of participant columns (e.g. 2 for Brian + Patrice).
  */
 export function getParticipantCount(sheet: Sheet): number {
-  const lastColumn = sheet.getLastColumn();
-  return lastColumn - PARTICIPANT_COLUMN_OFFSET;
+    const lastColumn = sheet.getLastColumn();
+    return lastColumn - PARTICIPANT_COLUMN_OFFSET;
 }
 
 /**
@@ -95,9 +95,9 @@ export function getParticipantCount(sheet: Sheet): number {
  * @returns Participant names in column order, e.g. ["Brian", "Patrice"].
  */
 export function getParticipantNames(sheet: Sheet): string[] {
-  const participantCount = getParticipantCount(sheet);
-  const headerRange = sheet.getRange(1, PARTICIPANT_COLUMN_OFFSET + 1, 1, participantCount);
-  return headerRange.getValues()[0] as string[];
+    const participantCount = getParticipantCount(sheet);
+    const headerRange = sheet.getRange(1, PARTICIPANT_COLUMN_OFFSET + 1, 1, participantCount);
+    return headerRange.getValues()[0] as string[];
 }
 
 /**
@@ -107,11 +107,11 @@ export function getParticipantNames(sheet: Sheet): string[] {
  * @returns A lookup from participant name to column index, e.g. `{ Brian: 0, Patrice: 1 }`.
  */
 export function getParticipantIndexByName(participantNames: string[]): Record<string, number> {
-  const participantIndexByName: Record<string, number> = {};
-  for (let i = 0; i < participantNames.length; i++) {
-    participantIndexByName[participantNames[i]] = i;
-  }
-  return participantIndexByName;
+    const participantIndexByName: Record<string, number> = {};
+    for (let i = 0; i < participantNames.length; i++) {
+        participantIndexByName[participantNames[i]] = i;
+    }
+    return participantIndexByName;
 }
 
 /**
@@ -127,23 +127,23 @@ export function getParticipantIndexByName(participantNames: string[]): Record<st
  * @returns Whether `percentages` covered every participant column and was written.
  */
 export function applyRowPercentages(sheet: Sheet, row: number, percentages: Record<string, number>): boolean {
-  const participantNames = getParticipantNames(sheet);
-  const indexByName = getParticipantIndexByName(participantNames);
-  const percentageNames = Object.keys(percentages);
+    const participantNames = getParticipantNames(sheet);
+    const indexByName = getParticipantIndexByName(participantNames);
+    const percentageNames = Object.keys(percentages);
 
-  const coversAllParticipants =
-    percentageNames.length === participantNames.length && percentageNames.every((name) => name in indexByName);
-  if (!coversAllParticipants) {
-    return false;
-  }
+    const coversAllParticipants =
+        percentageNames.length === participantNames.length && percentageNames.every((name) => name in indexByName);
+    if (!coversAllParticipants) {
+        return false;
+    }
 
-  for (const name of percentageNames) {
-    const col = PARTICIPANT_COLUMN_OFFSET + indexByName[name] + 1;
-    const range = sheet.getRange(row, col);
-    range.setValue(`${percentages[name]}%`);
-    range.setDataValidation(PERCENT_VALIDATION);
-  }
-  return true;
+    for (const name of percentageNames) {
+        const col = PARTICIPANT_COLUMN_OFFSET + indexByName[name] + 1;
+        const range = sheet.getRange(row, col);
+        range.setValue(`${percentages[name]}%`);
+        range.setDataValidation(PERCENT_VALIDATION);
+    }
+    return true;
 }
 
 /**
@@ -152,9 +152,9 @@ export function applyRowPercentages(sheet: Sheet, row: number, percentages: Reco
  * @returns Whether `row`'s "How to split" value is "Equally".
  */
 export function isEquallySplitRow(sheet: Sheet, row: number): boolean {
-  const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
-  const val = range.getValue() as string;
-  return val == SPLIT_TYPE_EQUALLY;
+    const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
+    const val = range.getValue() as string;
+    return val == SPLIT_TYPE_EQUALLY;
 }
 
 /**
@@ -163,9 +163,9 @@ export function isEquallySplitRow(sheet: Sheet, row: number): boolean {
  * @returns Whether `row`'s "How to split" value is "Variably".
  */
 export function isVariablySplitRow(sheet: Sheet, row: number): boolean {
-  const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
-  const val = range.getValue() as string;
-  return val == SPLIT_TYPE_VARIABLY;
+    const range = sheet.getRange(row, SPLIT_TYPE_COLUMN);
+    const val = range.getValue() as string;
+    return val == SPLIT_TYPE_VARIABLY;
 }
 
 /**
@@ -175,16 +175,16 @@ export function isVariablySplitRow(sheet: Sheet, row: number): boolean {
  * @returns How many participant checkboxes are checked (true) on an equally-split row.
  */
 export function countEquallySplitParticipants(sheet: Sheet, row: number, participantCount: number): number {
-  let count = 0;
-  for (let i = 0; i < participantCount; i++) {
-    const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
-    const range = sheet.getRange(row, col);
-    const val = range.getValue() as boolean;
-    if (val == true) {
-      count++;
+    let count = 0;
+    for (let i = 0; i < participantCount; i++) {
+        const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
+        const range = sheet.getRange(row, col);
+        const val = range.getValue() as boolean;
+        if (val == true) {
+            count++;
+        }
     }
-  }
-  return count;
+    return count;
 }
 
 /**
@@ -194,21 +194,21 @@ export function countEquallySplitParticipants(sheet: Sheet, row: number, partici
  * @returns Sum of the participant-column share values on a variably-split row (should total ~100).
  */
 export function sumVariableSplitShares(sheet: Sheet, row: number, participantCount: number): number {
-  let total = 0;
-  for (let i = 0; i < participantCount; i++) {
-    const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
-    const range = sheet.getRange(row, col);
-    // Percentage share cells hold a string like "50%" (onSplitTypeChanged's
-    // default, and what PERCENT_VALIDATION requires a human to type), not a
-    // bare number — parse it, skipping unparseable/blank cells rather than
-    // letting NaN into the sum (see buildDebtMatrix's matching guard).
-    const val = range.getValue() as string;
-    const share = parseFloat(val);
-    if (!Number.isNaN(share)) {
-      total += share;
+    let total = 0;
+    for (let i = 0; i < participantCount; i++) {
+        const col = PARTICIPANT_COLUMN_OFFSET + i + 1;
+        const range = sheet.getRange(row, col);
+        // Percentage share cells hold a string like "50%" (onSplitTypeChanged's
+        // default, and what PERCENT_VALIDATION requires a human to type), not a
+        // bare number — parse it, skipping unparseable/blank cells rather than
+        // letting NaN into the sum (see buildDebtMatrix's matching guard).
+        const val = range.getValue() as string;
+        const share = parseFloat(val);
+        if (!Number.isNaN(share)) {
+            total += share;
+        }
     }
-  }
-  return total;
+    return total;
 }
 
 /**
@@ -218,11 +218,11 @@ export function sumVariableSplitShares(sheet: Sheet, row: number, participantCou
  *   2 up to the settle-up anchor, in row order.
  */
 export function getPayeeNamesForRows(sheet: Sheet, totalRowAnchor: number): string[] {
-  const payeeRange = sheet.getRange(2, PAYEE_COLUMN, totalRowAnchor - 1, 1);
-  const payeeValues = payeeRange.getValues() as string[][];
-  const payeeNames: string[] = [];
-  for (let i = 0; i < payeeValues.length; i++) {
-    payeeNames.push(payeeValues[i][0]);
-  }
-  return payeeNames;
+    const payeeRange = sheet.getRange(2, PAYEE_COLUMN, totalRowAnchor - 1, 1);
+    const payeeValues = payeeRange.getValues() as string[][];
+    const payeeNames: string[] = [];
+    for (let i = 0; i < payeeValues.length; i++) {
+        payeeNames.push(payeeValues[i][0]);
+    }
+    return payeeNames;
 }

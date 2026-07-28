@@ -12,8 +12,11 @@ const port = Number(process.env.RECEIPT_REVIEW_API_PORT ?? 3100);
 // /api back to this process — see vite.config.ts).
 const clientDir = 'packages/receipt-review/dist/client';
 
-const app = createApp({ prisma: getPrisma(), client: createOllamaClient() }).use('/*', serveStatic({ root: clientDir }));
+const app = createApp({ prisma: getPrisma(), client: createOllamaClient() }).use(
+    '/*',
+    serveStatic({ root: clientDir }),
+);
 
 serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`receipt-review listening on http://localhost:${info.port}`);
+    console.log(`receipt-review listening on http://localhost:${info.port}`);
 });

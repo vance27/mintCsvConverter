@@ -11,8 +11,8 @@ export type { PrismaClient } from './generated/prisma/client.js';
  * convention. Overridden by `DATABASE_URL`.
  */
 export function defaultDatabaseUrl(): string {
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
-  return `file:${home}/.config/mint-csv-converter/receipts.db`;
+    const home = process.env.HOME ?? process.env.USERPROFILE ?? '.';
+    return `file:${home}/.config/mint-csv-converter/receipts.db`;
 }
 
 /**
@@ -22,17 +22,17 @@ export function defaultDatabaseUrl(): string {
  * better-sqlite3 opens but does not create it.
  */
 export function createPrismaClient(url: string = process.env.DATABASE_URL ?? defaultDatabaseUrl()): PrismaClient {
-  if (url !== ':memory:') {
-    mkdirSync(dirname(url.replace(/^file:/, '')), { recursive: true });
-  }
-  const adapter = new PrismaBetterSqlite3({ url });
-  return new PrismaClient({ adapter });
+    if (url !== ':memory:') {
+        mkdirSync(dirname(url.replace(/^file:/, '')), { recursive: true });
+    }
+    const adapter = new PrismaBetterSqlite3({ url });
+    return new PrismaClient({ adapter });
 }
 
 let singleton: PrismaClient | undefined;
 
 /** Process-wide singleton client for the default (env/default) datastore. */
 export function getPrisma(): PrismaClient {
-  singleton ??= createPrismaClient();
-  return singleton;
+    singleton ??= createPrismaClient();
+    return singleton;
 }

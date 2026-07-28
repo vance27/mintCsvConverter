@@ -9,13 +9,13 @@ import { defaultSnapshotPath } from '../snapshot.js';
 //   nx run @mint-csv-converter/receipts:restore
 
 async function main(): Promise<void> {
-  const prisma = getPrisma();
-  await restoreFromFile(prisma);
-  console.log(`Restored datastore from ${defaultSnapshotPath()}`);
-  await prisma.$disconnect();
+    const prisma = getPrisma();
+    await restoreFromFile(prisma);
+    console.log(`Restored datastore from ${defaultSnapshotPath()}`);
+    await prisma.$disconnect();
 }
 
 main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
+    console.error(err);
+    process.exitCode = 1;
 });

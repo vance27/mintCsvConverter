@@ -6,7 +6,7 @@ The biggest manual bottleneck in the expense-splitting workflow is going
 through Costco receipts by hand: each receipt has many line items, each
 split differently between the two payers, and today you eyeball them, do
 the weighted math, and type a single aggregate pair of percentages into
-the one "Variably" row that the *transaction* becomes in the sheet. Many
+the one "Variably" row that the _transaction_ becomes in the sheet. Many
 items repeat across trips (same item, drifting price, occasional
 discounts), so there's real leverage in remembering an item's typical
 split and price history instead of re-deciding every time.
@@ -15,8 +15,8 @@ split and price history instead of re-deciding every time.
 nothing is hardcoded to Costco or to Brian-as-payer. Patrice pays for
 Target, so the system must allow a different person to be the payer and a
 different store to be the source — Target and other stores should be able
-to plug in later without a rebuild. v1 *tunes* for Costco; it isn't
-*limited* to it.
+to plug in later without a rebuild. v1 _tunes_ for Costco; it isn't
+_limited_ to it.
 
 **Item identity keyed on item ID, not name:** Costco receipts carry a
 stable item number/SKU per line; the abbreviated names drift and are
@@ -79,8 +79,8 @@ ghostscript). Dev/build: `prisma`.
 `~/.config/mint-csv-converter/` convention as `syncState.ts`'s
 `defaultSyncStatePath()`).
 
-Split percentages are *not* hardcoded `splitBrian`/`splitPatrice`
-columns; store and payer are *not* hardcoded to Target/Brian. Everything
+Split percentages are _not_ hardcoded `splitBrian`/`splitPatrice`
+columns; store and payer are _not_ hardcoded to Target/Brian. Everything
 that could be "another person" or "another store" is a row, not a column,
 so a third participant or a new store is a data change, not a schema
 migration. Models:
@@ -91,7 +91,7 @@ migration. Models:
   item codes (Costco item 1234 ≠ Target item 1234) and lets extraction
   pick a store-specific prompt later.
 - **Item** — canonical item, deduped on **`(storeId, itemCode)`**
-  (unique) — the stable item number/SKU, *not* the name. `itemCode?` is
+  (unique) — the stable item number/SKU, _not_ the name. `itemCode?` is
   nullable; when a store's receipts lack codes we fall back to a
   `normalizedName` unique-per-store key instead. `displayName` (editable
   in the UI), `lastSeenName` (raw extracted name), `createdAt`.
@@ -126,7 +126,7 @@ singleton Prisma client. Store/Participant seed via a small seed script.
 
 **We deliberately do NOT store** the receipt's member number or card
 digits — they aren't needed for splitting and they're the only real PII
-on the receipt. `ReceiptTender.label` captures the payment *method*
+on the receipt. `ReceiptTender.label` captures the payment _method_
 ("Card", "Cash", "Costco Cash Reward") but the extraction prompt
 explicitly instructs the model never to include a card number or any of
 its digits, even masked. Keeping them out means the datastore (and its
@@ -180,12 +180,12 @@ backups below) carry only benign item/price/split data.
   `renderPdf`, base64-encodes the page image(s), sends them with a
   structured-extraction prompt requesting JSON, and validates the
   response with a **zod** schema (`{ store?, purchaseDate, subtotal, tax,
-  total, items: [{ itemCode, rawName, quantity, unitPrice, lineTotal,
-  taxable?, discountAmount }], tenders: [{ kind, label, amount }] }`).
+total, items: [{ itemCode, rawName, quantity, unitPrice, lineTotal,
+taxable?, discountAmount }], tenders: [{ kind, label, amount }] }`).
   The prompt **explicitly asks for the numeric item number per line**
   (the stable key). Grounded in the real sample (CHASKA #1646 receipt):
   each line is `<taxflag> <itemCode> <abbrev name> <extended price>
-  <Y/N>`; multi-qty items add a separate `N @ unitprice` annotation whose
+<Y/N>`; multi-qty items add a separate `N @ unitprice` annotation whose
   product equals the extended price (e.g. `3 @ 3.99` → BLUEBERRIES
   `11.97`) — so `lineTotal` = printed price, `quantity`/`unitPrice` come
   from the `@` annotation (default qty 1). Costco **instant-savings
@@ -195,7 +195,7 @@ backups below) carry only benign item/price/split data.
   one `kind: "CARD"` line equal to TOTAL, but a purchase split across
   payment methods (partly cash, partly Costco Cash Reward) prints more
   than one; `kind` is constrained to `CARD | CASH | COSTCO_CASH_REWARD |
-  OTHER` and `label` is instructed to never carry a card number, even
+OTHER` and `label` is instructed to never carry a card number, even
   masked. Zod guards against malformed JSON — treat model output as
   untrusted. Uses Ollama's structured-output (`format`) support to bias
   toward valid JSON. Prompt is store-aware (Costco tuned for v1; a Target
@@ -317,15 +317,15 @@ in the package README.
   tiny fixture PDF, `extractReceipt` against a fake Ollama client
   returning canned JSON, `ingest` against a temp SQLite DB) pass.
 - **Real format confirmed from the sample** (`~/Downloads/Orders &
-  Purchases _ Costco.pdf`, the CHASKA #1646 receipt): 2-page PDF, **no
+Purchases _ Costco.pdf`, the CHASKA #1646 receipt): 2-page PDF, **no
   text layer** (render→VLM required), and — importantly — **every line
   carries a clean numeric item code**, so the `(store, itemCode)` key is
   solid for Costco warehouse receipts; the name fallback is only for other
   stores.
 - **Manual, on your end** (needs a real Ollama + real receipts): install
   Ollama as above, pull a vision model, run `nx run
-  @mint-csv-converter/receipts:ingest -- --store Costco --payer Brian
-  "~/Downloads/Orders & Purchases _ Costco.pdf"`, and check extracted line
+@mint-csv-converter/receipts:ingest -- --store Costco --payer Brian
+"~/Downloads/Orders & Purchases _ Costco.pdf"`, and check extracted line
   items against the real receipt. **This is the make-or-break step** —
   real-world extraction accuracy is the main risk and the whole reason
   we're doing extraction-first. Iterate on prompt/model here before
@@ -335,7 +335,7 @@ in the package README.
 
 ## Phase 2 — Learning loop (experience)
 
-There is **no separate training step — reviewing a receipt *is* the
+There is **no separate training step — reviewing a receipt _is_ the
 training.** Each correction becomes the memory used next time, so manual
 work shrinks trip over trip:
 
@@ -343,7 +343,7 @@ work shrinks trip over trip:
   default flagged "new — please set." You set the splits; they become each
   item's remembered typical split (`ItemSplitDefault`).
 - **Later trips:** previously-seen items come in **pre-filled with your
-  last split**, labeled with *why* ("learned — always Brian," "last trip
+  last split**, labeled with _why_ ("learned — always Brian," "last trip
   70/30"). Right guess → do nothing. You only touch new or changed items.
 - **A few months in:** the staples auto-guess correctly; review collapses
   to the handful of new/changed items per trip. That's the payoff.
@@ -412,7 +412,7 @@ entries, upserted by `receiptId` (not an object keyed by stringified
 "Auditability" below for why that path, not literally next to the
 snapshot).
 
-**Auditability (annotated-PDF question).** Marking the *original* PDF in
+**Auditability (annotated-PDF question).** Marking the _original_ PDF in
 place (e.g. "37% / 63%" on the BLUEBERRIES line) is **not trivial** — that
 PDF has no text layer and the JSON extraction has no per-line coordinates,
 so it would require adding coordinate-grounded OCR (Tesseract word boxes

@@ -1,9 +1,9 @@
 /** One line's contribution to the aggregate: its net value and how it splits. */
 export interface AggregateLine {
-  lineTotal: number;
-  discountAmount?: number;
-  /** participant name → percent of this line (0–100); should sum to ~100. */
-  splits: Record<string, number>;
+    lineTotal: number;
+    discountAmount?: number;
+    /** participant name → percent of this line (0–100); should sum to ~100. */
+    splits: Record<string, number>;
 }
 
 /**
@@ -17,24 +17,24 @@ export interface AggregateLine {
  * excluded since it scales proportionally and doesn't change the ratio.
  */
 export function aggregateSplits(lines: AggregateLine[], participants: string[]): Record<string, number> {
-  const shares: Record<string, number> = Object.fromEntries(participants.map((p) => [p, 0]));
-  let total = 0;
+    const shares: Record<string, number> = Object.fromEntries(participants.map((p) => [p, 0]));
+    let total = 0;
 
-  for (const line of lines) {
-    const net = line.lineTotal - (line.discountAmount ?? 0);
-    total += net;
-    for (const participant of participants) {
-      const percent = line.splits[participant] ?? 0;
-      shares[participant] += net * (percent / 100);
+    for (const line of lines) {
+        const net = line.lineTotal - (line.discountAmount ?? 0);
+        total += net;
+        for (const participant of participants) {
+            const percent = line.splits[participant] ?? 0;
+            shares[participant] += net * (percent / 100);
+        }
     }
-  }
 
-  if (total <= 0) {
-    return shares;
-  }
+    if (total <= 0) {
+        return shares;
+    }
 
-  const rawPercents = participants.map((p) => ({ participant: p, raw: (shares[p] / total) * 100 }));
-  return largestRemainderRound(rawPercents);
+    const rawPercents = participants.map((p) => ({ participant: p, raw: (shares[p] / total) * 100 }));
+    return largestRemainderRound(rawPercents);
 }
 
 /**
@@ -43,32 +43,32 @@ export function aggregateSplits(lines: AggregateLine[], participants: string[]):
  * typical split for yet. Any remainder goes to the earliest entries.
  */
 export function evenPercentages(count: number): number[] {
-  if (count <= 0) {
-    return [];
-  }
-  const base = Math.floor(100 / count);
-  const remainder = 100 - base * count;
-  return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
+    if (count <= 0) {
+        return [];
+    }
+    const base = Math.floor(100 / count);
+    const remainder = 100 - base * count;
+    return Array.from({ length: count }, (_, i) => base + (i < remainder ? 1 : 0));
 }
 
 function largestRemainderRound(rawPercents: { participant: string; raw: number }[]): Record<string, number> {
-  const floored = rawPercents.map((entry) => ({
-    participant: entry.participant,
-    floor: Math.floor(entry.raw),
-    remainder: entry.raw - Math.floor(entry.raw),
-  }));
+    const floored = rawPercents.map((entry) => ({
+        participant: entry.participant,
+        floor: Math.floor(entry.raw),
+        remainder: entry.raw - Math.floor(entry.raw),
+    }));
 
-  const flooredSum = floored.reduce((sum, entry) => sum + entry.floor, 0);
-  let remaining = Math.round(100 - flooredSum);
+    const flooredSum = floored.reduce((sum, entry) => sum + entry.floor, 0);
+    let remaining = Math.round(100 - flooredSum);
 
-  const byRemainderDesc = [...floored].sort((a, b) => b.remainder - a.remainder);
-  const result: Record<string, number> = {};
-  for (const entry of floored) {
-    result[entry.participant] = entry.floor;
-  }
-  for (let i = 0; i < byRemainderDesc.length && remaining > 0; i++) {
-    result[byRemainderDesc[i].participant] += 1;
-    remaining -= 1;
-  }
-  return result;
+    const byRemainderDesc = [...floored].sort((a, b) => b.remainder - a.remainder);
+    const result: Record<string, number> = {};
+    for (const entry of floored) {
+        result[entry.participant] = entry.floor;
+    }
+    for (let i = 0; i < byRemainderDesc.length && remaining > 0; i++) {
+        result[byRemainderDesc[i].participant] += 1;
+        remaining -= 1;
+    }
+    return result;
 }

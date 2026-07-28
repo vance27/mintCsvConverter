@@ -1,17 +1,17 @@
 import type { Sheet } from './types.js';
 import {
-  AMOUNT_COLUMN,
-  PARTICIPANT_COLUMN_OFFSET,
-  SPLIT_TYPE_COLUMN,
-  countEquallySplitParticipants,
-  getParticipantCount,
-  getParticipantIndexByName,
-  getParticipantNames,
-  getPayeeNamesForRows,
-  getTotalRowAnchor,
-  isEquallySplitRow,
-  isVariablySplitRow,
-  sumVariableSplitShares,
+    AMOUNT_COLUMN,
+    PARTICIPANT_COLUMN_OFFSET,
+    SPLIT_TYPE_COLUMN,
+    countEquallySplitParticipants,
+    getParticipantCount,
+    getParticipantIndexByName,
+    getParticipantNames,
+    getPayeeNamesForRows,
+    getTotalRowAnchor,
+    isEquallySplitRow,
+    isVariablySplitRow,
+    sumVariableSplitShares,
 } from './sheetLayout.js';
 
 /**
@@ -21,14 +21,14 @@ import {
  * @returns A `size` x `size` matrix, every cell 0.
  */
 export function createZeroMatrix(size: number): number[][] {
-  const matrix: number[][] = [];
-  for (let i = 0; i < size; i++) {
-    matrix.push([]);
-    for (let j = 0; j < size; j++) {
-      matrix[i].push(0);
+    const matrix: number[][] = [];
+    for (let i = 0; i < size; i++) {
+        matrix.push([]);
+        for (let j = 0; j < size; j++) {
+            matrix[i].push(0);
+        }
     }
-  }
-  return matrix;
+    return matrix;
 }
 
 /**
@@ -48,64 +48,64 @@ export function createZeroMatrix(size: number): number[][] {
  *   `payerIndex` owes `payeeIndex`.
  */
 export function buildDebtMatrix(
-  sheet: Sheet,
-  participantNames: string[],
-  participantIndexByName: Record<string, number>,
-  participantCount: number,
-  totalRowAnchor: number,
+    sheet: Sheet,
+    participantNames: string[],
+    participantIndexByName: Record<string, number>,
+    participantCount: number,
+    totalRowAnchor: number,
 ): number[][] {
-  Logger.log('Build Graph');
+    Logger.log('Build Graph');
 
-  const debtMatrix = createZeroMatrix(participantCount);
-  const payeeNames = getPayeeNamesForRows(sheet, totalRowAnchor);
-  for (let payeeNameIndex = 0; payeeNameIndex < payeeNames.length; payeeNameIndex++) {
-    const payeeName = payeeNames[payeeNameIndex];
-    const transactionRow = payeeNameIndex + 2;
+    const debtMatrix = createZeroMatrix(participantCount);
+    const payeeNames = getPayeeNamesForRows(sheet, totalRowAnchor);
+    for (let payeeNameIndex = 0; payeeNameIndex < payeeNames.length; payeeNameIndex++) {
+        const payeeName = payeeNames[payeeNameIndex];
+        const transactionRow = payeeNameIndex + 2;
 
-    const payeeIndex = participantIndexByName[payeeName];
-    const amountRange = sheet.getRange(transactionRow, AMOUNT_COLUMN, 1, 1);
-    const amount = amountRange.getValue() as number;
+        const payeeIndex = participantIndexByName[payeeName];
+        const amountRange = sheet.getRange(transactionRow, AMOUNT_COLUMN, 1, 1);
+        const amount = amountRange.getValue() as number;
 
-    const isEquallySplit = isEquallySplitRow(sheet, transactionRow);
-    let equallySplitParticipantCount = 0;
-    if (isEquallySplit) {
-      equallySplitParticipantCount = countEquallySplitParticipants(sheet, transactionRow, participantCount);
-    }
-
-    const isVariablySplit = isVariablySplitRow(sheet, transactionRow);
-    let totalVariableShares = 0;
-    if (isVariablySplit) {
-      totalVariableShares = sumVariableSplitShares(sheet, transactionRow, participantCount);
-    }
-
-    for (let payerIndex = 0; payerIndex < participantCount; payerIndex++) {
-      if (payerIndex == payeeIndex) {
-        continue;
-      }
-      const payerColumn = PARTICIPANT_COLUMN_OFFSET + payerIndex + 1;
-      const participantSplitRange = sheet.getRange(transactionRow, payerColumn);
-      // The cell holds a checkbox (boolean) for an equally-split row or a
-      // percentage share for a variably-split row — a string like "50%"
-      // (onSplitTypeChanged's default, and what PERCENT_VALIDATION requires
-      // a human to type), not a bare number.
-      const participantSplitValue = participantSplitRange.getValue() as boolean | string;
-      if (isEquallySplit && participantSplitValue == true) {
-        const owedAmount = amount / equallySplitParticipantCount;
-        debtMatrix[payerIndex][payeeIndex] += owedAmount;
-      } else if (isVariablySplit) {
-        const share = parseFloat(String(participantSplitValue));
-        // Guard against NaN (e.g. a stray/blank cell): letting it into the
-        // matrix would poison every downstream sum, and simplifyDebts'
-        // convergence check (Math.abs(x) < 0.005) never terminates for NaN.
-        if (!Number.isNaN(share) && share !== 0) {
-          const owedAmount = (share / totalVariableShares) * amount;
-          debtMatrix[payerIndex][payeeIndex] += owedAmount;
+        const isEquallySplit = isEquallySplitRow(sheet, transactionRow);
+        let equallySplitParticipantCount = 0;
+        if (isEquallySplit) {
+            equallySplitParticipantCount = countEquallySplitParticipants(sheet, transactionRow, participantCount);
         }
-      }
-    }
-  }
 
-  return debtMatrix;
+        const isVariablySplit = isVariablySplitRow(sheet, transactionRow);
+        let totalVariableShares = 0;
+        if (isVariablySplit) {
+            totalVariableShares = sumVariableSplitShares(sheet, transactionRow, participantCount);
+        }
+
+        for (let payerIndex = 0; payerIndex < participantCount; payerIndex++) {
+            if (payerIndex == payeeIndex) {
+                continue;
+            }
+            const payerColumn = PARTICIPANT_COLUMN_OFFSET + payerIndex + 1;
+            const participantSplitRange = sheet.getRange(transactionRow, payerColumn);
+            // The cell holds a checkbox (boolean) for an equally-split row or a
+            // percentage share for a variably-split row — a string like "50%"
+            // (onSplitTypeChanged's default, and what PERCENT_VALIDATION requires
+            // a human to type), not a bare number.
+            const participantSplitValue = participantSplitRange.getValue() as boolean | string;
+            if (isEquallySplit && participantSplitValue == true) {
+                const owedAmount = amount / equallySplitParticipantCount;
+                debtMatrix[payerIndex][payeeIndex] += owedAmount;
+            } else if (isVariablySplit) {
+                const share = parseFloat(String(participantSplitValue));
+                // Guard against NaN (e.g. a stray/blank cell): letting it into the
+                // matrix would poison every downstream sum, and simplifyDebts'
+                // convergence check (Math.abs(x) < 0.005) never terminates for NaN.
+                if (!Number.isNaN(share) && share !== 0) {
+                    const owedAmount = (share / totalVariableShares) * amount;
+                    debtMatrix[payerIndex][payeeIndex] += owedAmount;
+                }
+            }
+        }
+    }
+
+    return debtMatrix;
 }
 
 /**
@@ -113,16 +113,16 @@ export function buildDebtMatrix(
  * @returns The index of the smallest value in `values`.
  */
 export function indexOfMin(values: number[]): number {
-  let min = values[0];
-  let minIndex = 0;
+    let min = values[0];
+    let minIndex = 0;
 
-  for (let i = 1; i < values.length; i++) {
-    if (values[i] < min) {
-      minIndex = i;
-      min = values[i];
+    for (let i = 1; i < values.length; i++) {
+        if (values[i] < min) {
+            minIndex = i;
+            min = values[i];
+        }
     }
-  }
-  return minIndex;
+    return minIndex;
 }
 
 /**
@@ -130,16 +130,16 @@ export function indexOfMin(values: number[]): number {
  * @returns The index of the largest value in `values`.
  */
 export function indexOfMax(values: number[]): number {
-  let max = values[0];
-  let maxIndex = 0;
+    let max = values[0];
+    let maxIndex = 0;
 
-  for (let i = 1; i < values.length; i++) {
-    if (values[i] > max) {
-      maxIndex = i;
-      max = values[i];
+    for (let i = 1; i < values.length; i++) {
+        if (values[i] > max) {
+            maxIndex = i;
+            max = values[i];
+        }
     }
-  }
-  return maxIndex;
+    return maxIndex;
 }
 
 /**
@@ -158,37 +158,38 @@ export function indexOfMax(values: number[]): number {
  * @returns Payments as `[payerIndex, payeeIndex, paymentAmount]` tuples.
  */
 export function simplifyDebts(
-  sheet: Sheet,
-  debtMatrix: number[][],
-  participantNames: string[],
-  participantIndexByName: Record<string, number>,
-  participantCount: number,
-  _totalRowAnchor: number,
+    sheet: Sheet,
+    debtMatrix: number[][],
+    participantNames: string[],
+    participantIndexByName: Record<string, number>,
+    participantCount: number,
+    _totalRowAnchor: number,
 ): number[][] {
-  const netBalances: number[] = [];
+    const netBalances: number[] = [];
 
-  for (let participantIndex = 0; participantIndex < participantCount; participantIndex++) {
-    let netBalance = 0;
-    for (let otherParticipantIndex = 0; otherParticipantIndex < participantCount; otherParticipantIndex++) {
-      netBalance +=
-        debtMatrix[otherParticipantIndex][participantIndex] - debtMatrix[participantIndex][otherParticipantIndex];
+    for (let participantIndex = 0; participantIndex < participantCount; participantIndex++) {
+        let netBalance = 0;
+        for (let otherParticipantIndex = 0; otherParticipantIndex < participantCount; otherParticipantIndex++) {
+            netBalance +=
+                debtMatrix[otherParticipantIndex][participantIndex] -
+                debtMatrix[participantIndex][otherParticipantIndex];
+        }
+        netBalances.push(netBalance);
     }
-    netBalances.push(netBalance);
-  }
 
-  const settlementPayments: number[][] = [];
-  while (true) {
-    const payeeIndex = indexOfMax(netBalances);
-    const payerIndex = indexOfMin(netBalances);
-    // fml floating point math
-    if (Math.abs(netBalances[payeeIndex]) < 0.005 && Math.abs(netBalances[payerIndex]) < 0.005) {
-      return settlementPayments;
+    const settlementPayments: number[][] = [];
+    while (true) {
+        const payeeIndex = indexOfMax(netBalances);
+        const payerIndex = indexOfMin(netBalances);
+        // fml floating point math
+        if (Math.abs(netBalances[payeeIndex]) < 0.005 && Math.abs(netBalances[payerIndex]) < 0.005) {
+            return settlementPayments;
+        }
+        const paymentAmount = Math.min(-netBalances[payerIndex], netBalances[payeeIndex]);
+        netBalances[payeeIndex] -= paymentAmount;
+        netBalances[payerIndex] += paymentAmount;
+        settlementPayments.push([payerIndex, payeeIndex, paymentAmount]);
     }
-    const paymentAmount = Math.min(-netBalances[payerIndex], netBalances[payeeIndex]);
-    netBalances[payeeIndex] -= paymentAmount;
-    netBalances[payerIndex] += paymentAmount;
-    settlementPayments.push([payerIndex, payeeIndex, paymentAmount]);
-  }
 }
 
 /**
@@ -206,35 +207,42 @@ export function simplifyDebts(
  * @returns Payments as `[payerIndex, payeeIndex, paymentAmount]` tuples.
  */
 export function computeSettlementPayments(
-  sheet: Sheet,
-  debtMatrix: number[][],
-  participantNames: string[],
-  participantIndexByName: Record<string, number>,
-  participantCount: number,
-  totalRowAnchor: number,
+    sheet: Sheet,
+    debtMatrix: number[][],
+    participantNames: string[],
+    participantIndexByName: Record<string, number>,
+    participantCount: number,
+    totalRowAnchor: number,
 ): number[][] {
-  const simplifyToggleRow = totalRowAnchor + 1 + 1; // header + 1
-  const simplifyToggleColumn = SPLIT_TYPE_COLUMN;
-  const simplifyToggleRange = sheet.getRange(simplifyToggleRow, simplifyToggleColumn);
-  const shouldSimplifyDebts = simplifyToggleRange.getValue() as boolean;
+    const simplifyToggleRow = totalRowAnchor + 1 + 1; // header + 1
+    const simplifyToggleColumn = SPLIT_TYPE_COLUMN;
+    const simplifyToggleRange = sheet.getRange(simplifyToggleRow, simplifyToggleColumn);
+    const shouldSimplifyDebts = simplifyToggleRange.getValue() as boolean;
 
-  Logger.log(shouldSimplifyDebts);
-  if (shouldSimplifyDebts == true) {
-    return simplifyDebts(sheet, debtMatrix, participantNames, participantIndexByName, participantCount, totalRowAnchor);
-  }
-
-  const payments: number[][] = [];
-  // Spit out the payments verbatim
-  for (let payerIndex = 0; payerIndex < debtMatrix.length; payerIndex++) {
-    const owedToOthers = debtMatrix[payerIndex];
-    for (let payeeIndex = 0; payeeIndex < owedToOthers.length; payeeIndex++) {
-      const amount = owedToOthers[payeeIndex];
-      if (amount > 0.005) {
-        payments.push([payerIndex, payeeIndex, amount]);
-      }
+    Logger.log(shouldSimplifyDebts);
+    if (shouldSimplifyDebts == true) {
+        return simplifyDebts(
+            sheet,
+            debtMatrix,
+            participantNames,
+            participantIndexByName,
+            participantCount,
+            totalRowAnchor,
+        );
     }
-  }
-  return payments;
+
+    const payments: number[][] = [];
+    // Spit out the payments verbatim
+    for (let payerIndex = 0; payerIndex < debtMatrix.length; payerIndex++) {
+        const owedToOthers = debtMatrix[payerIndex];
+        for (let payeeIndex = 0; payeeIndex < owedToOthers.length; payeeIndex++) {
+            const amount = owedToOthers[payeeIndex];
+            if (amount > 0.005) {
+                payments.push([payerIndex, payeeIndex, amount]);
+            }
+        }
+    }
+    return payments;
 }
 
 /**
@@ -250,42 +258,42 @@ export function computeSettlementPayments(
  * @param totalRowAnchor - The off-by-one anchor from getTotalRowAnchor.
  */
 export function writeSettlementPayments(
-  sheet: Sheet,
-  payments: number[][],
-  participantNames: string[],
-  participantIndexByName: Record<string, number>,
-  participantCount: number,
-  totalRowAnchor: number,
+    sheet: Sheet,
+    payments: number[][],
+    participantNames: string[],
+    participantIndexByName: Record<string, number>,
+    participantCount: number,
+    totalRowAnchor: number,
 ): void {
-  const nextRowOffsetByPayerIndex: number[] = [];
-  for (let i = 0; i < participantCount; i++) {
-    nextRowOffsetByPayerIndex.push(0);
-  }
+    const nextRowOffsetByPayerIndex: number[] = [];
+    for (let i = 0; i < participantCount; i++) {
+        nextRowOffsetByPayerIndex.push(0);
+    }
 
-  const settlementAreaRange = sheet.getRange(
-    totalRowAnchor + 1,
-    PARTICIPANT_COLUMN_OFFSET + 1,
-    participantCount,
-    participantCount,
-  );
-  settlementAreaRange.clear({
-    contentsOnly: true,
-  });
-
-  for (let i = 0; i < payments.length; i++) {
-    const payment = payments[i];
-    const payerIndex = payment[0];
-    const payeeIndex = payment[1];
-    const payeeName = participantNames[payeeIndex];
-    const amount = payment[2];
-    const outputCell = sheet.getRange(
-      totalRowAnchor + nextRowOffsetByPayerIndex[payerIndex] + 1,
-      PARTICIPANT_COLUMN_OFFSET + payerIndex + 1,
+    const settlementAreaRange = sheet.getRange(
+        totalRowAnchor + 1,
+        PARTICIPANT_COLUMN_OFFSET + 1,
+        participantCount,
+        participantCount,
     );
-    const formattedAmount = '$' + amount.toFixed(2);
-    outputCell.setValue(payeeName + ' ' + formattedAmount);
-    nextRowOffsetByPayerIndex[payerIndex] = nextRowOffsetByPayerIndex[payerIndex] + 1;
-  }
+    settlementAreaRange.clear({
+        contentsOnly: true,
+    });
+
+    for (let i = 0; i < payments.length; i++) {
+        const payment = payments[i];
+        const payerIndex = payment[0];
+        const payeeIndex = payment[1];
+        const payeeName = participantNames[payeeIndex];
+        const amount = payment[2];
+        const outputCell = sheet.getRange(
+            totalRowAnchor + nextRowOffsetByPayerIndex[payerIndex] + 1,
+            PARTICIPANT_COLUMN_OFFSET + payerIndex + 1,
+        );
+        const formattedAmount = '$' + amount.toFixed(2);
+        outputCell.setValue(payeeName + ' ' + formattedAmount);
+        nextRowOffsetByPayerIndex[payerIndex] = nextRowOffsetByPayerIndex[payerIndex] + 1;
+    }
 }
 
 /**
@@ -298,32 +306,45 @@ export function writeSettlementPayments(
  * @param sheet - The sheet to recalculate.
  */
 export function recalculateSettleUp(sheet: Sheet): void {
-  Logger.log('Calculate');
+    Logger.log('Calculate');
 
-  const participantNames = getParticipantNames(sheet);
-  const participantIndexByName = getParticipantIndexByName(participantNames);
-  const participantCount = getParticipantCount(sheet);
-  // getTotalRowAnchor's `undefined` path is unreachable in normal use (a
-  // real "TOTAL OWING" row always exists) — asserted here rather than
-  // guarded with an early return, to keep this exactly as behaviorally
-  // faithful to the original untyped version as possible. See the note on
-  // getTotalRowAnchor.
-  const totalRowAnchor = getTotalRowAnchor(sheet) as number;
-  Logger.log('variables Set in Calculate');
+    const participantNames = getParticipantNames(sheet);
+    const participantIndexByName = getParticipantIndexByName(participantNames);
+    const participantCount = getParticipantCount(sheet);
+    // getTotalRowAnchor's `undefined` path is unreachable in normal use (a
+    // real "TOTAL OWING" row always exists) — asserted here rather than
+    // guarded with an early return, to keep this exactly as behaviorally
+    // faithful to the original untyped version as possible. See the note on
+    // getTotalRowAnchor.
+    const totalRowAnchor = getTotalRowAnchor(sheet) as number;
+    Logger.log('variables Set in Calculate');
 
-  const debtMatrix = buildDebtMatrix(sheet, participantNames, participantIndexByName, participantCount, totalRowAnchor);
-  Logger.log('calculate payments in Calculate');
+    const debtMatrix = buildDebtMatrix(
+        sheet,
+        participantNames,
+        participantIndexByName,
+        participantCount,
+        totalRowAnchor,
+    );
+    Logger.log('calculate payments in Calculate');
 
-  const payments = computeSettlementPayments(
-    sheet,
-    debtMatrix,
-    participantNames,
-    participantIndexByName,
-    participantCount,
-    totalRowAnchor,
-  );
-  Logger.log('RenderPayments');
+    const payments = computeSettlementPayments(
+        sheet,
+        debtMatrix,
+        participantNames,
+        participantIndexByName,
+        participantCount,
+        totalRowAnchor,
+    );
+    Logger.log('RenderPayments');
 
-  writeSettlementPayments(sheet, payments, participantNames, participantIndexByName, participantCount, totalRowAnchor);
-  Logger.log('renderPayments and calculate completed');
+    writeSettlementPayments(
+        sheet,
+        payments,
+        participantNames,
+        participantIndexByName,
+        participantCount,
+        totalRowAnchor,
+    );
+    Logger.log('renderPayments and calculate completed');
 }

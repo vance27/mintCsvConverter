@@ -1,32 +1,35 @@
 {
-  "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "tags": ["type:app", "scope:review-ui"],
-  "targets": {
-    "serve-api": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["^build"],
-      "options": {
-        "command": "node --env-file=.env --import tsx --watch packages/receipt-review/src/server/index.ts"
-      }
-    },
-    "dev": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["^build"],
-      "options": {
-        "commands": ["nx run @mint-csv-converter/receipt-review:serve-api", "nx run @mint-csv-converter/receipt-review:serve"],
-        "parallel": true
-      }
-    },
-    "e2e": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": ["^build"],
-      "options": {
-        "cwd": "packages/receipt-review",
-        "command": "playwright test --config e2e/playwright.config.ts"
-      }
+    "$schema": "../../node_modules/nx/schemas/project-schema.json",
+    "tags": ["type:app", "scope:review-ui"],
+    "targets": {
+        "serve-api": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["^build"],
+            "options": {
+                "command": "node --env-file=.env --import tsx --watch packages/receipt-review/src/server/index.ts"
+            }
+        },
+        "dev": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["^build"],
+            "options": {
+                "commands": [
+                    "nx run @mint-csv-converter/receipt-review:serve-api",
+                    "nx run @mint-csv-converter/receipt-review:serve"
+                ],
+                "parallel": true
+            }
+        },
+        "e2e": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["^build"],
+            "options": {
+                "cwd": "packages/receipt-review",
+                "command": "playwright test --config e2e/playwright.config.ts"
+            }
+        }
     }
-  }
 }

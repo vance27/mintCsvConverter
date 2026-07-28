@@ -1,9 +1,9 @@
 {
-  "name": "@mint-csv-converter/apps-script",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  }
+    "name": "@mint-csv-converter/apps-script",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "typecheck": "tsc --noEmit"
+    }
 }

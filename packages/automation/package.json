@@ -1,16 +1,16 @@
 {
-  "name": "@mint-csv-converter/automation",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
-  "dependencies": {
-    "@google-cloud/local-auth": "3.0.1",
-    "@googleapis/script": "11.0.1",
-    "@googleapis/sheets": "13.0.2",
-    "@mint-csv-converter/core": "workspace:*",
-    "@mint-csv-converter/receipts": "workspace:*",
-    "google-auth-library": "10.5.0"
-  }
+    "name": "@mint-csv-converter/automation",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "dependencies": {
+        "@google-cloud/local-auth": "3.0.1",
+        "@googleapis/script": "11.0.1",
+        "@googleapis/sheets": "13.0.2",
+        "@mint-csv-converter/core": "workspace:*",
+        "@mint-csv-converter/receipts": "workspace:*",
+        "google-auth-library": "10.5.0"
+    }
 }

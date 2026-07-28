@@ -9,20 +9,20 @@ import { seedParticipants } from '../seed.js';
 //   nx run @mint-csv-converter/receipts:seed -- Brian Patrice
 
 async function main(): Promise<void> {
-  const names = process.argv.slice(2);
-  if (names.length === 0) {
-    console.error('Usage: seed.ts <participant-name...>');
-    process.exitCode = 1;
-    return;
-  }
+    const names = process.argv.slice(2);
+    if (names.length === 0) {
+        console.error('Usage: seed.ts <participant-name...>');
+        process.exitCode = 1;
+        return;
+    }
 
-  const prisma = getPrisma();
-  await seedParticipants(prisma, names);
-  console.log(`Seeded participant(s): ${names.join(', ')}`);
-  await prisma.$disconnect();
+    const prisma = getPrisma();
+    await seedParticipants(prisma, names);
+    console.log(`Seeded participant(s): ${names.join(', ')}`);
+    await prisma.$disconnect();
 }
 
 main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
+    console.error(err);
+    process.exitCode = 1;
 });

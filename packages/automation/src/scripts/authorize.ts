@@ -12,17 +12,19 @@ import { defaultTokenPath } from '../googleAuth.js';
 // Also callable from packages/receipt-review's web UI (see its
 // reauthorize flow) via the same runAuthorizeFlow this script wraps.
 async function main(): Promise<void> {
-  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error('Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (from the OAuth Desktop app client)');
-  }
+    const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+        throw new Error(
+            'Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET (from the OAuth Desktop app client)',
+        );
+    }
 
-  await runAuthorizeFlow(clientId, clientSecret);
-  console.log(`Saved Google OAuth credentials to ${defaultTokenPath()}`);
+    await runAuthorizeFlow(clientId, clientSecret);
+    console.log(`Saved Google OAuth credentials to ${defaultTokenPath()}`);
 }
 
 main().catch((err) => {
-  console.error(err);
-  process.exitCode = 1;
+    console.error(err);
+    process.exitCode = 1;
 });

@@ -3,18 +3,18 @@ import type { PrismaClient } from '@mint-csv-converter/receipts';
 import { recomputeReceiptTotals } from './receiptTotals.js';
 
 export const updateLineItemSplitsSchema = z.object({
-  splits: z.record(z.string(), z.number().min(0).max(100)),
-  displayName: z.string().min(1).optional(),
-  /** Reviewer-corrected "what was actually paid" for this line — derives discountAmount, leaves unitPrice/quantity/lineTotal (the printed values) untouched. */
-  netPrice: z.number().min(0).optional(),
+    splits: z.record(z.string(), z.number().min(0).max(100)),
+    displayName: z.string().min(1).optional(),
+    /** Reviewer-corrected "what was actually paid" for this line — derives discountAmount, leaves unitPrice/quantity/lineTotal (the printed values) untouched. */
+    netPrice: z.number().min(0).optional(),
 });
 
 export type UpdateLineItemSplitsInput = z.infer<typeof updateLineItemSplitsSchema>;
 
 export class SplitsSumError extends Error {
-  constructor(total: number) {
-    super(`Splits must sum to 100, got ${total}`);
-  }
+    constructor(total: number) {
+        super(`Splits must sum to 100, got ${total}`);
+    }
 }
 
 /**
@@ -24,41 +24,43 @@ export class SplitsSumError extends Error {
  * valid sum depends on which participants are present, not a fixed shape.
  */
 export async function updateLineItemSplits(
-  prisma: PrismaClient,
-  lineItemId: number,
-  input: UpdateLineItemSplitsInput,
+    prisma: PrismaClient,
+    lineItemId: number,
+    input: UpdateLineItemSplitsInput,
 ): Promise<void> {
-  const total = Object.values(input.splits).reduce((sum, percent) => sum + percent, 0);
-  if (Math.round(total) !== 100) {
-    throw new SplitsSumError(total);
-  }
-
-  const lineItem = await prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } });
-  const participants = await prisma.participant.findMany({ where: { name: { in: Object.keys(input.splits) } } });
-
-  await prisma.$transaction(async (tx) => {
-    for (const participant of participants) {
-      await tx.lineItemSplit.upsert({
-        where: { lineItemId_participantId: { lineItemId, participantId: participant.id } },
-        create: { lineItemId, participantId: participant.id, percent: input.splits[participant.name] },
-        update: { percent: input.splits[participant.name] },
-      });
+    const total = Object.values(input.splits).reduce((sum, percent) => sum + percent, 0);
+    if (Math.round(total) !== 100) {
+        throw new SplitsSumError(total);
     }
-    await tx.lineItem.update({
-      where: { id: lineItemId },
-      data: {
-        reviewed: true,
-        ...(input.netPrice !== undefined ? { discountAmount: Math.round((lineItem.lineTotal - input.netPrice) * 100) / 100 } : {}),
-      },
+
+    const lineItem = await prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } });
+    const participants = await prisma.participant.findMany({ where: { name: { in: Object.keys(input.splits) } } });
+
+    await prisma.$transaction(async (tx) => {
+        for (const participant of participants) {
+            await tx.lineItemSplit.upsert({
+                where: { lineItemId_participantId: { lineItemId, participantId: participant.id } },
+                create: { lineItemId, participantId: participant.id, percent: input.splits[participant.name] },
+                update: { percent: input.splits[participant.name] },
+            });
+        }
+        await tx.lineItem.update({
+            where: { id: lineItemId },
+            data: {
+                reviewed: true,
+                ...(input.netPrice !== undefined
+                    ? { discountAmount: Math.round((lineItem.lineTotal - input.netPrice) * 100) / 100 }
+                    : {}),
+            },
+        });
+        if (input.displayName && lineItem.itemId) {
+            await tx.item.update({ where: { id: lineItem.itemId }, data: { displayName: input.displayName } });
+        }
     });
-    if (input.displayName && lineItem.itemId) {
-      await tx.item.update({ where: { id: lineItem.itemId }, data: { displayName: input.displayName } });
-    }
-  });
 
-  if (input.netPrice !== undefined) {
-    await recomputeReceiptTotals(prisma, lineItem.receiptId);
-  }
+    if (input.netPrice !== undefined) {
+        await recomputeReceiptTotals(prisma, lineItem.receiptId);
+    }
 }
 
 /**
@@ -70,7 +72,7 @@ export async function updateLineItemSplits(
  * app's "resubmit updates in place, latest correction wins" philosophy.
  */
 export async function deleteLineItem(prisma: PrismaClient, lineItemId: number): Promise<void> {
-  const lineItem = await prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } });
-  await prisma.lineItem.delete({ where: { id: lineItemId } });
-  await recomputeReceiptTotals(prisma, lineItem.receiptId);
+    const lineItem = await prisma.lineItem.findUniqueOrThrow({ where: { id: lineItemId } });
+    await prisma.lineItem.delete({ where: { id: lineItemId } });
+    await recomputeReceiptTotals(prisma, lineItem.receiptId);
 }

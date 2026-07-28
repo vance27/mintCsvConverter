@@ -1,8 +1,8 @@
 export type AuthJobState = { status: 'pending' } | { status: 'done' } | { status: 'error'; message: string };
 
 export interface GoogleAuthJobsDeps {
-  runAuthorizeFlow: () => Promise<void>;
-  hasSavedCredentials: () => boolean;
+    runAuthorizeFlow: () => Promise<void>;
+    hasSavedCredentials: () => boolean;
 }
 
 /**
@@ -12,30 +12,30 @@ export interface GoogleAuthJobsDeps {
  * single-user, localhost-only tool.
  */
 export class GoogleAuthJobs {
-  private current: AuthJobState | null = null;
+    private current: AuthJobState | null = null;
 
-  constructor(private readonly deps: GoogleAuthJobsDeps) {}
+    constructor(private readonly deps: GoogleAuthJobsDeps) {}
 
-  start(): void {
-    if (this.current?.status === 'pending') {
-      return;
+    start(): void {
+        if (this.current?.status === 'pending') {
+            return;
+        }
+        this.current = { status: 'pending' };
+        this.deps
+            .runAuthorizeFlow()
+            .then(() => {
+                this.current = { status: 'done' };
+            })
+            .catch((error: unknown) => {
+                this.current = { status: 'error', message: error instanceof Error ? error.message : String(error) };
+            });
     }
-    this.current = { status: 'pending' };
-    this.deps
-      .runAuthorizeFlow()
-      .then(() => {
-        this.current = { status: 'done' };
-      })
-      .catch((error: unknown) => {
-        this.current = { status: 'error', message: error instanceof Error ? error.message : String(error) };
-      });
-  }
 
-  get(): AuthJobState | null {
-    return this.current;
-  }
+    get(): AuthJobState | null {
+        return this.current;
+    }
 
-  isConnected(): boolean {
-    return this.deps.hasSavedCredentials();
-  }
+    isConnected(): boolean {
+        return this.deps.hasSavedCredentials();
+    }
 }

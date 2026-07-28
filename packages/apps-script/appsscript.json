@@ -1,10 +1,9 @@
 {
-  "timeZone": "America/Chicago",
-  "dependencies": {
-  },
-  "exceptionLogging": "STACKDRIVER",
-  "runtimeVersion": "V8",
-  "executionApi": {
-    "access": "MYSELF"
-  }
+    "timeZone": "America/Chicago",
+    "dependencies": {},
+    "exceptionLogging": "STACKDRIVER",
+    "runtimeVersion": "V8",
+    "executionApi": {
+        "access": "MYSELF"
+    }
 }
