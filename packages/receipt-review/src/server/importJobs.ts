@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { ImportFileToLines, type CsvColumnMapping } from '@mint-csv-converter/core';
 import { loadDbBackedFactory, toIsoDate } from '@mint-csv-converter/automation';
 import { createImportBatch, type PrismaClient } from '@mint-csv-converter/receipts';
+import { SingleSlotJob, type JobState } from './singleSlotJob.js';
 
 export interface ImportResult {
     importedCount: number;
@@ -13,53 +14,52 @@ export interface ImportResult {
     importBatchId: number | null;
 }
 
-export type ImportJobState =
-    { status: 'pending' } | { status: 'done'; result: ImportResult } | { status: 'error'; message: string };
+export type ImportJobState = JobState<ImportResult>;
 
 export interface ImportJobsDeps {
     prisma: PrismaClient;
 }
 
 /**
- * Tracks in-flight CSV imports in memory — same shape as UploadJobs
- * (uploadJobs.ts). Importing only ever stages ImportedTransaction rows; it
- * never touches Google Sheets (see syncRun.ts for that, a separate,
- * explicitly-triggered step).
+ * Tracks in-flight CSV imports in memory, one SingleSlotJob per jobId.
+ * Importing only ever stages ImportedTransaction rows; it never touches
+ * Google Sheets (see syncRun.ts for that, a separate, explicitly-triggered
+ * step).
  */
 export class ImportJobs {
-    private readonly jobs = new Map<string, ImportJobState>();
+    private readonly jobs = new Map<string, SingleSlotJob<ImportResult>>();
 
     constructor(private readonly deps: ImportJobsDeps) {}
 
     start(csvBuffer: Uint8Array, filename: string, options: { payer: string; profileId: number }): string {
         const jobId = randomUUID();
-        this.jobs.set(jobId, { status: 'pending' });
+        const slot = new SingleSlotJob<ImportResult>();
+        this.jobs.set(jobId, slot);
 
         const dir = mkdtempSync(join(tmpdir(), 'csv-import-'));
         const csvPath = join(dir, filename);
         writeFileSync(csvPath, csvBuffer);
 
         console.log(`[import:${jobId}] starting ${filename}`);
-        importCsv(this.deps.prisma, csvPath, filename, options.payer, options.profileId)
-            .then((result) => {
-                console.log(
-                    `[import:${jobId}] done — imported=${result.importedCount} skipped=${result.skippedDuplicateCount} excluded=${result.excludedCount}`,
-                );
-                this.jobs.set(jobId, { status: 'done', result });
-            })
-            .catch((error: unknown) => {
-                console.error(`[import:${jobId}] failed:`, error instanceof Error ? error.message : error);
-                this.jobs.set(jobId, {
-                    status: 'error',
-                    message: error instanceof Error ? error.message : String(error),
-                });
-            });
+        slot.start(() =>
+            importCsv(this.deps.prisma, csvPath, filename, options.payer, options.profileId)
+                .then((result) => {
+                    console.log(
+                        `[import:${jobId}] done — imported=${result.importedCount} skipped=${result.skippedDuplicateCount} excluded=${result.excludedCount}`,
+                    );
+                    return result;
+                })
+                .catch((error: unknown) => {
+                    console.error(`[import:${jobId}] failed:`, error instanceof Error ? error.message : error);
+                    throw error;
+                }),
+        );
 
         return jobId;
     }
 
     get(jobId: string): ImportJobState | undefined {
-        return this.jobs.get(jobId);
+        return this.jobs.get(jobId)?.get() ?? undefined;
     }
 }
 
