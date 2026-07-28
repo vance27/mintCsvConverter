@@ -76,6 +76,14 @@
             "options": {
                 "command": "node --import tsx packages/receipts/src/scripts/restore.ts"
             }
+        },
+        "scrape-item-images": {
+            "executor": "nx:run-commands",
+            "cache": false,
+            "dependsOn": ["prisma-generate", "prisma-migrate"],
+            "options": {
+                "command": "node --import tsx packages/receipts/src/scripts/scrapeItemImages.ts"
+            }
         }
     }
 }
