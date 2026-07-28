@@ -182,7 +182,7 @@ model ReceiptTender {
 }
 
 model LineItem {
-  id             Int     @id @default(autoincrement())
+  id             Int       @id @default(autoincrement())
   receiptId      Int
   itemId         Int?
   rawItemCode    String?
@@ -190,8 +190,19 @@ model LineItem {
   unitPrice      Float
   quantity       Float
   lineTotal      Float
-  discountAmount Float   @default(0)
-  reviewed       Boolean @default(false)
+  discountAmount Float     @default(0)
+  reviewed       Boolean   @default(false)
+  // The VLM's per-line taxable read (extractReceipt.ts's receiptSchema) —
+  // eyeball-only against the printed receipt, no tax-rate computation on top
+  // of it. Null for a line ingested before this column existed, or when the
+  // model couldn't read one — distinct from an actual false.
+  taxable        Boolean?
+  // Soft-delete marker (docs/adr/0009) — same shape as
+  // ImportedTransaction.removedAt. A removed line stays in the DB;
+  // recomputeReceiptTotals/submitReceipt/listManifestEntries all exclude it,
+  // and the review UI shows it struck-through with a Restore action instead
+  // of losing it to a hard delete.
+  removedAt      DateTime?
 
   receipt Receipt         @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   item    Item?           @relation(fields: [itemId], references: [id])
