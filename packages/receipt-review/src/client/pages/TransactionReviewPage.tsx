@@ -1,5 +1,3 @@
-import { useEffect, useState } from 'react';
-import type { InferResponseType } from 'hono/client';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PriorityHighIcon from '@mui/icons-material/PriorityHigh';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -36,18 +34,11 @@ import {
     Tooltip,
     Typography,
 } from '@mui/material';
-import { api } from '../lib/api.js';
-
-type TransactionsResponse = InferResponseType<typeof api.transactions.$get, 200>;
-type TransactionSummary = TransactionsResponse['transactions'][number];
-type ImportBatchSummary = InferResponseType<(typeof api)['import-batches']['$get']>[number];
-
-type Status = 'ACTIVE' | 'EXCLUDED_REMOVED';
-type SyncedStatus = 'UNSYNCED' | 'SYNCED' | 'ALL';
-type SortKey = 'date' | 'payer' | 'description' | 'amount' | 'splitType' | 'syncedAt';
-type SortDir = 'asc' | 'desc';
-
-const PAGE_SIZE_OPTIONS = [10, 25, 50] as const;
+import { useImportBatches } from '../hooks/useImportBatches.js';
+import { PAGE_SIZE_OPTIONS, useTransactionFilters } from '../hooks/useTransactionFilters.js';
+import { useTransactionsQuery } from '../hooks/useTransactionsQuery.js';
+import { useTransactionPatch } from '../hooks/useTransactionPatch.js';
+import type { SortKey, Status, SyncedStatus, TransactionSummary } from '../hooks/types.js';
 
 interface TransactionReviewPageProps {
     onSelectReceipt: (receiptId: number) => void;
@@ -102,149 +93,12 @@ const SORTABLE_COLUMNS: { key: SortKey; label: string; align?: 'right' }[] = [
 
 /** Lists staged transactions and, for Variably-split ones, whether a matching receipt exists and has been reviewed/submitted. */
 export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPageProps) {
-    const [batches, setBatches] = useState<ImportBatchSummary[] | null>(null);
-    const [selectedBatchId, setSelectedBatchId] = useState<number | 'ALL' | undefined>(undefined);
-    const [status, setStatus] = useState<Status>('ACTIVE');
-    const [syncedStatus, setSyncedStatus] = useState<SyncedStatus>('UNSYNCED');
-    const [sortBy, setSortBy] = useState<SortKey>('date');
-    const [sortDir, setSortDir] = useState<SortDir>('asc');
-    const [page, setPage] = useState(0);
-    const [pageSize, setPageSize] = useState<(typeof PAGE_SIZE_OPTIONS)[number]>(25);
-    const [result, setResult] = useState<TransactionsResponse | null>(null);
-    const [pendingIds, setPendingIds] = useState<Set<number>>(new Set());
-    const [editingBatch, setEditingBatch] = useState<{ title: string; description: string } | null>(null);
-    const [savingBatch, setSavingBatch] = useState(false);
-    const [batchSyncedCount, setBatchSyncedCount] = useState<{ synced: number; total: number } | null>(null);
-    const [deletingBatch, setDeletingBatch] = useState(false);
-    const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const importBatches = useImportBatches();
+    const filters = useTransactionFilters();
+    const query = useTransactionsQuery(importBatches.selectedBatchId, filters);
+    const patch = useTransactionPatch(query.reload);
 
-    async function loadBatches(): Promise<ImportBatchSummary[]> {
-        const res = await api['import-batches'].$get();
-        const loaded = await res.json();
-        setBatches(loaded);
-        return loaded;
-    }
-
-    useEffect(() => {
-        void (async () => {
-            const loaded = await loadBatches();
-            setSelectedBatchId(loaded.length > 0 ? loaded[0].id : 'ALL');
-        })();
-    }, []);
-
-    const selectedBatch = selectedBatchId !== 'ALL' ? (batches ?? []).find((b) => b.id === selectedBatchId) : undefined;
-
-    useEffect(() => {
-        if (typeof selectedBatchId !== 'number') {
-            setBatchSyncedCount(null);
-            return;
-        }
-        void (async () => {
-            const [totalRes, syncedRes] = await Promise.all([
-                api.transactions.$get({
-                    query: { importBatchId: String(selectedBatchId), syncedStatus: 'ALL', pageSize: '10' },
-                }),
-                api.transactions.$get({
-                    query: { importBatchId: String(selectedBatchId), syncedStatus: 'SYNCED', pageSize: '10' },
-                }),
-            ]);
-            if (!totalRes.ok || !syncedRes.ok) {
-                return;
-            }
-            const [totalBody, syncedBody] = await Promise.all([totalRes.json(), syncedRes.json()]);
-            setBatchSyncedCount({ synced: syncedBody.totalCount, total: totalBody.totalCount });
-        })();
-    }, [selectedBatchId]);
-
-    async function deleteBatch(): Promise<void> {
-        if (typeof selectedBatchId !== 'number') {
-            return;
-        }
-        setDeletingBatch(true);
-        try {
-            const res = await api['import-batches'][':id'].$delete({ param: { id: String(selectedBatchId) } });
-            if (res.ok) {
-                const loaded = await loadBatches();
-                setSelectedBatchId(loaded.length > 0 ? loaded[0].id : 'ALL');
-                setConfirmingDelete(false);
-            }
-        } finally {
-            setDeletingBatch(false);
-        }
-    }
-
-    async function saveBatchEdit(): Promise<void> {
-        if (!editingBatch || typeof selectedBatchId !== 'number') {
-            return;
-        }
-        setSavingBatch(true);
-        try {
-            await api['import-batches'][':id'].$patch({
-                param: { id: String(selectedBatchId) },
-                json: { title: editingBatch.title, description: editingBatch.description || null },
-            });
-            await loadBatches();
-            setEditingBatch(null);
-        } finally {
-            setSavingBatch(false);
-        }
-    }
-
-    async function load(): Promise<void> {
-        if (selectedBatchId === undefined) {
-            return;
-        }
-        const res = await api.transactions.$get({
-            query: {
-                ...(selectedBatchId !== 'ALL' ? { importBatchId: String(selectedBatchId) } : {}),
-                status,
-                syncedStatus,
-                sortBy,
-                sortDir,
-                page: String(page + 1),
-                pageSize: String(pageSize),
-            },
-        });
-        if (res.ok) {
-            setResult(await res.json());
-        }
-    }
-
-    useEffect(() => {
-        void load();
-    }, [selectedBatchId, status, syncedStatus, sortBy, sortDir, page, pageSize]);
-
-    function handleSort(key: SortKey): void {
-        if (sortBy === key) {
-            setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-        } else {
-            setSortBy(key);
-            setSortDir('asc');
-        }
-        setPage(0);
-    }
-
-    async function patchTransaction(
-        id: number,
-        body: { splitType?: 'Equally' | 'Variably'; removed?: boolean },
-    ): Promise<void> {
-        setPendingIds((prev) => new Set(prev).add(id));
-        try {
-            const res = await api.transactions[':id'].$patch({ param: { id: String(id) }, json: body });
-            if (res.ok) {
-                await load();
-            }
-        } finally {
-            setPendingIds((prev) => {
-                const next = new Set(prev);
-                next.delete(id);
-                return next;
-            });
-        }
-    }
-
-    const transactions = result?.transactions ?? [];
-    const hasAnyBatches = (batches?.length ?? 0) > 0;
+    const hasAnyBatches = (importBatches.batches?.length ?? 0) > 0;
 
     return (
         <Container maxWidth="lg" sx={{ py: 6 }}>
@@ -260,29 +114,31 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                             <Select
                                 labelId="import-batch-label"
                                 label="Import"
-                                value={selectedBatchId ?? ''}
+                                value={importBatches.selectedBatchId ?? ''}
                                 onChange={(e) => {
-                                    setSelectedBatchId(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value));
-                                    setPage(0);
+                                    importBatches.setSelectedBatchId(
+                                        e.target.value === 'ALL' ? 'ALL' : Number(e.target.value),
+                                    );
+                                    filters.setPage(0);
                                 }}
                             >
                                 <MenuItem value="ALL">All imports</MenuItem>
-                                {(batches ?? []).map((b) => (
+                                {(importBatches.batches ?? []).map((b) => (
                                     <MenuItem key={b.id} value={b.id}>
                                         {b.title}
                                     </MenuItem>
                                 ))}
                             </Select>
                         </FormControl>
-                        {selectedBatch ? (
+                        {importBatches.selectedBatch ? (
                             <Tooltip title="Edit import title/notes">
                                 <IconButton
                                     size="small"
                                     aria-label="Edit import"
                                     onClick={() =>
-                                        setEditingBatch({
-                                            title: selectedBatch.title,
-                                            description: selectedBatch.description ?? '',
+                                        importBatches.setEditingBatch({
+                                            title: importBatches.selectedBatch!.title,
+                                            description: importBatches.selectedBatch!.description ?? '',
                                         })
                                     }
                                 >
@@ -290,11 +146,11 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                                 </IconButton>
                             </Tooltip>
                         ) : null}
-                        {selectedBatch ? (
+                        {importBatches.selectedBatch ? (
                             <Tooltip
                                 title={
-                                    batchSyncedCount && batchSyncedCount.synced > 0
-                                        ? `Can't delete — ${batchSyncedCount.synced} of ${batchSyncedCount.total} transactions already synced`
+                                    importBatches.batchSyncedCount && importBatches.batchSyncedCount.synced > 0
+                                        ? `Can't delete — ${importBatches.batchSyncedCount.synced} of ${importBatches.batchSyncedCount.total} transactions already synced`
                                         : 'Delete this import'
                                 }
                             >
@@ -302,8 +158,10 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                                     <IconButton
                                         size="small"
                                         aria-label="Delete import"
-                                        disabled={!batchSyncedCount || batchSyncedCount.synced > 0}
-                                        onClick={() => setConfirmingDelete(true)}
+                                        disabled={
+                                            !importBatches.batchSyncedCount || importBatches.batchSyncedCount.synced > 0
+                                        }
+                                        onClick={() => importBatches.setConfirmingDelete(true)}
                                     >
                                         <DeleteForeverIcon fontSize="small" />
                                     </IconButton>
@@ -313,11 +171,11 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                         <ToggleButtonGroup
                             size="small"
                             exclusive
-                            value={status}
+                            value={filters.status}
                             onChange={(_, next: Status | null) => {
                                 if (next) {
-                                    setStatus(next);
-                                    setPage(0);
+                                    filters.setStatus(next);
+                                    filters.setPage(0);
                                 }
                             }}
                         >
@@ -327,11 +185,11 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                         <ToggleButtonGroup
                             size="small"
                             exclusive
-                            value={syncedStatus}
+                            value={filters.syncedStatus}
                             onChange={(_, next: SyncedStatus | null) => {
                                 if (next) {
-                                    setSyncedStatus(next);
-                                    setPage(0);
+                                    filters.setSyncedStatus(next);
+                                    filters.setPage(0);
                                 }
                             }}
                         >
@@ -341,7 +199,7 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                         </ToggleButtonGroup>
                     </Stack>
                 </Stack>
-                {result === null ? (
+                {query.result === null ? (
                     <Typography color="text.secondary">Loading…</Typography>
                 ) : !hasAnyBatches ? (
                     <Paper sx={{ p: 4 }}>
@@ -349,7 +207,7 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                             No transactions staged yet — import a CSV export to get started.
                         </Typography>
                     </Paper>
-                ) : transactions.length === 0 ? (
+                ) : query.transactions.length === 0 ? (
                     <Paper sx={{ p: 4 }}>
                         <Typography color="text.secondary">No transactions match the current filters.</Typography>
                     </Paper>
@@ -361,9 +219,9 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                                     {SORTABLE_COLUMNS.map((col) => (
                                         <TableCell key={col.key} align={col.align}>
                                             <TableSortLabel
-                                                active={sortBy === col.key}
-                                                direction={sortBy === col.key ? sortDir : 'asc'}
-                                                onClick={() => handleSort(col.key)}
+                                                active={filters.sortBy === col.key}
+                                                direction={filters.sortBy === col.key ? filters.sortDir : 'asc'}
+                                                onClick={() => filters.handleSort(col.key)}
                                             >
                                                 {col.label}
                                             </TableSortLabel>
@@ -374,9 +232,9 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                                 </TableRow>
                             </TableHead>
                             <TableBody>
-                                {transactions.map((t) => {
+                                {query.transactions.map((t) => {
                                     const locked = t.syncedAt !== null;
-                                    const pending = pendingIds.has(t.id);
+                                    const pending = patch.pendingIds.has(t.id);
                                     return (
                                         <TableRow key={t.id} hover>
                                             <TableCell>{t.date}</TableCell>
@@ -385,10 +243,10 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                                             <TableCell align="right">${t.amount.toFixed(2)}</TableCell>
                                             <TableCell>
                                                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                                                    {status === 'EXCLUDED_REMOVED' && t.excluded ? (
+                                                    {filters.status === 'EXCLUDED_REMOVED' && t.excluded ? (
                                                         <Chip label="Excluded" color="default" size="small" />
                                                     ) : null}
-                                                    {status === 'EXCLUDED_REMOVED' && t.removed ? (
+                                                    {filters.status === 'EXCLUDED_REMOVED' && t.removed ? (
                                                         <Chip label="Removed" color="default" size="small" />
                                                     ) : null}
                                                     {locked ? (
@@ -399,7 +257,7 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                                                             value={t.splitType}
                                                             disabled={pending}
                                                             onChange={(e) =>
-                                                                void patchTransaction(t.id, {
+                                                                void patch.patchTransaction(t.id, {
                                                                     splitType: e.target.value as 'Equally' | 'Variably',
                                                                 })
                                                             }
@@ -431,7 +289,9 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                                                                 size="small"
                                                                 disabled={locked}
                                                                 onClick={() =>
-                                                                    void patchTransaction(t.id, { removed: !t.removed })
+                                                                    void patch.patchTransaction(t.id, {
+                                                                        removed: !t.removed,
+                                                                    })
                                                                 }
                                                                 aria-label={
                                                                     t.removed ? 'Undo removal' : 'Remove transaction'
@@ -454,36 +314,45 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                         </Table>
                         <TablePagination
                             component="div"
-                            count={result.totalCount}
-                            page={page}
-                            onPageChange={(_, next) => setPage(next)}
-                            rowsPerPage={pageSize}
+                            count={query.totalCount}
+                            page={filters.page}
+                            onPageChange={(_, next) => filters.setPage(next)}
+                            rowsPerPage={filters.pageSize}
                             rowsPerPageOptions={[...PAGE_SIZE_OPTIONS]}
                             onRowsPerPageChange={(e) => {
-                                setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number]);
-                                setPage(0);
+                                filters.setPageSize(Number(e.target.value) as (typeof PAGE_SIZE_OPTIONS)[number]);
+                                filters.setPage(0);
                             }}
                         />
                     </TableContainer>
                 )}
             </Stack>
-            <Dialog open={editingBatch !== null} onClose={() => setEditingBatch(null)} maxWidth="sm" fullWidth>
+            <Dialog
+                open={importBatches.editingBatch !== null}
+                onClose={() => importBatches.setEditingBatch(null)}
+                maxWidth="sm"
+                fullWidth
+            >
                 <DialogTitle>Edit import</DialogTitle>
                 <DialogContent>
                     <Stack spacing={2} sx={{ pt: 1 }}>
                         <TextField
                             label="Title"
-                            value={editingBatch?.title ?? ''}
+                            value={importBatches.editingBatch?.title ?? ''}
                             onChange={(e) =>
-                                setEditingBatch((prev) => (prev ? { ...prev, title: e.target.value } : prev))
+                                importBatches.setEditingBatch((prev) =>
+                                    prev ? { ...prev, title: e.target.value } : prev,
+                                )
                             }
                             fullWidth
                         />
                         <TextField
                             label="Notes"
-                            value={editingBatch?.description ?? ''}
+                            value={importBatches.editingBatch?.description ?? ''}
                             onChange={(e) =>
-                                setEditingBatch((prev) => (prev ? { ...prev, description: e.target.value } : prev))
+                                importBatches.setEditingBatch((prev) =>
+                                    prev ? { ...prev, description: e.target.value } : prev,
+                                )
                             }
                             placeholder="e.g. remember to also pull the July return credit next time"
                             multiline
@@ -493,36 +362,44 @@ export function TransactionReviewPage({ onSelectReceipt }: TransactionReviewPage
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setEditingBatch(null)} disabled={savingBatch}>
+                    <Button onClick={() => importBatches.setEditingBatch(null)} disabled={importBatches.savingBatch}>
                         Cancel
                     </Button>
                     <Button
-                        onClick={() => void saveBatchEdit()}
+                        onClick={() => void importBatches.saveBatchEdit()}
                         variant="contained"
-                        disabled={savingBatch || !editingBatch?.title.trim()}
+                        disabled={importBatches.savingBatch || !importBatches.editingBatch?.title.trim()}
                     >
                         Save
                     </Button>
                 </DialogActions>
             </Dialog>
-            <Dialog open={confirmingDelete} onClose={() => setConfirmingDelete(false)} maxWidth="sm" fullWidth>
+            <Dialog
+                open={importBatches.confirmingDelete}
+                onClose={() => importBatches.setConfirmingDelete(false)}
+                maxWidth="sm"
+                fullWidth
+            >
                 <DialogTitle>Delete import?</DialogTitle>
                 <DialogContent>
                     <Typography>
-                        This will permanently delete "{selectedBatch?.title}" and its {batchSyncedCount?.total ?? 0}{' '}
-                        staged transaction
-                        {batchSyncedCount?.total === 1 ? '' : 's'}. This can't be undone.
+                        This will permanently delete "{importBatches.selectedBatch?.title}" and its{' '}
+                        {importBatches.batchSyncedCount?.total ?? 0} staged transaction
+                        {importBatches.batchSyncedCount?.total === 1 ? '' : 's'}. This can't be undone.
                     </Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setConfirmingDelete(false)} disabled={deletingBatch}>
+                    <Button
+                        onClick={() => importBatches.setConfirmingDelete(false)}
+                        disabled={importBatches.deletingBatch}
+                    >
                         Cancel
                     </Button>
                     <Button
-                        onClick={() => void deleteBatch()}
+                        onClick={() => void importBatches.deleteBatch()}
                         variant="contained"
                         color="error"
-                        disabled={deletingBatch}
+                        disabled={importBatches.deletingBatch}
                     >
                         Delete
                     </Button>
