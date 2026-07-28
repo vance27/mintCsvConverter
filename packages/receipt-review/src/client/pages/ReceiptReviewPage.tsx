@@ -81,7 +81,7 @@ function draftFromLineItem(line: LineItemDetail, leftName: string, rightName: st
     return {
         displayName: line.displayName ?? '',
         rightPercent: line.splits[rightName] ?? 100 - (line.splits[leftName] ?? 50),
-        netPrice: line.lineTotal - line.discountAmount,
+        netPrice: round2(line.lineTotal - line.discountAmount),
         unitPrice: line.unitPrice,
         quantity: line.quantity,
         taxable: line.taxable,
@@ -104,8 +104,18 @@ function mergeNewDrafts(
     return next;
 }
 
-/** unitPrice/quantity are the "printed" values; shifting either preserves the dollar discount already dialed into netPrice, matching how the server leaves discountAmount alone when netPrice isn't also submitted. */
-function applyPriceFieldChange(draft: Draft, field: 'unitPrice' | 'quantity', value: number): Draft {
+/**
+ * unitPrice/quantity are the "printed" values; shifting either preserves the
+ * dollar discount already dialed into netPrice, matching how the server
+ * leaves discountAmount alone when netPrice isn't also submitted. `value` is
+ * rounded on the way in — a native number input's step buttons (or a
+ * scroll-wheel nudge while focused) increment/decrement in raw binary
+ * floating point (e.g. 61 - 0.01 → 60.98999999999999), and without rounding
+ * that drift would both display as garbage and compound further on every
+ * subsequent edit.
+ */
+function applyPriceFieldChange(draft: Draft, field: 'unitPrice' | 'quantity', rawValue: number): Draft {
+    const value = round2(rawValue);
     const oldLineTotal = draft.unitPrice * draft.quantity;
     const updated = { ...draft, [field]: value };
     const newLineTotal = updated.unitPrice * updated.quantity;
@@ -530,7 +540,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                                                 if (!Number.isNaN(value)) {
                                                     setDrafts((prev) => ({
                                                         ...prev,
-                                                        [line.id]: { ...draft, netPrice: value },
+                                                        [line.id]: { ...draft, netPrice: round2(value) },
                                                     }));
                                                 }
                                             }}
