@@ -43,6 +43,13 @@ model Item {
   displayName    String?
   lastSeenName   String
   createdAt      DateTime @default(now())
+  // Local path to a scraped product-photo thumbnail (see itemImages.ts's
+  // `scrape-item-images` CLI target) — retained on disk like receipt source
+  // PDFs, not just a bare external URL, since a hotlinked URL can rot or
+  // require the scraping session's cookies to re-fetch. Null until scraped;
+  // the scraper only ever attempts items where this is still null, so a
+  // bulk run is safe to re-run/resume at any time.
+  imagePath      String?
 
   store             Store              @relation(fields: [storeId], references: [id])
   splitDefaults     ItemSplitDefault[]
