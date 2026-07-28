@@ -14,6 +14,10 @@
             "types": "./dist/aggregate.d.ts",
             "default": "./dist/aggregate.js"
         },
+        "./receiptStateMachine": {
+            "types": "./dist/receiptStateMachine.d.ts",
+            "default": "./dist/receiptStateMachine.js"
+        },
         "./dist/testing/testDb.js": {
             "types": "./dist/testing/testDb.d.ts",
             "default": "./dist/testing/testDb.js"

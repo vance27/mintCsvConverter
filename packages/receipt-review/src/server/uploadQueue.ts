@@ -1,12 +1,14 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { HTTPException } from 'hono/http-exception';
 import {
     queueReceiptForIngest,
     runIngestExtraction,
     type PrismaClient,
     type VisionChatClient,
 } from '@mint-csv-converter/receipts';
+import { canRetry } from '@mint-csv-converter/receipts/receiptStateMachine';
 
 export interface UploadQueueDeps {
     prisma: PrismaClient;
@@ -67,10 +69,21 @@ export class UploadQueue {
 
     /** Resets an already-FAILED receipt back to QUEUED and wakes the worker — no re-upload needed. */
     async retry(receiptId: number): Promise<void> {
-        await this.deps.prisma.receipt.update({
-            where: { id: receiptId },
+        const { count } = await this.deps.prisma.receipt.updateMany({
+            where: { id: receiptId, status: 'FAILED' },
             data: { status: 'QUEUED', extractionError: null },
         });
+        if (count === 0) {
+            const receipt = await this.deps.prisma.receipt.findUnique({ where: { id: receiptId } });
+            if (!receipt) {
+                throw new HTTPException(404, { message: `Receipt ${receiptId} not found` });
+            }
+            if (!canRetry(receipt.status)) {
+                throw new HTTPException(400, {
+                    message: `Receipt ${receiptId} isn't FAILED (status: ${receipt.status}) — can't retry`,
+                });
+            }
+        }
         this.wake();
     }
 

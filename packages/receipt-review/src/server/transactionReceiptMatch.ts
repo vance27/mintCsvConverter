@@ -1,5 +1,5 @@
 import { toIsoDate } from '@mint-csv-converter/automation';
-import { ReceiptStatus } from '@mint-csv-converter/receipts';
+import { hasReliableExtraction } from '@mint-csv-converter/receipts/receiptStateMachine';
 import type { ReceiptSummary } from './receiptQueries.js';
 
 export interface ReceiptMatch {
@@ -35,7 +35,7 @@ export function matchTransactionToReceipt(
             // `r.cardAmount ?? r.total` on such a row would be null, and the
             // amount-difference check below would coerce that to 0, producing
             // false-positive matches against receipts still mid-extraction.
-            (r.status === ReceiptStatus.EXTRACTED || r.status === ReceiptStatus.SUBMITTED) &&
+            hasReliableExtraction(r.status) &&
             r.purchaseDate !== null &&
             r.total !== null &&
             r.payer.toLowerCase() === transaction.payer.toLowerCase() &&

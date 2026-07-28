@@ -22,6 +22,7 @@ import {
     Tooltip,
     Typography,
 } from '@mui/material';
+import { isPending, hasReliableExtraction, canRetry } from '@mint-csv-converter/receipts/receiptStateMachine';
 import { api } from '../lib/api.js';
 
 type ReceiptSummary = InferResponseType<typeof api.receipts.$get>[number];
@@ -48,7 +49,7 @@ function ReviewIndicator({ status }: { status: ReceiptSummary['status'] }) {
             </Tooltip>
         );
     }
-    if (status === 'QUEUED' || status === 'EXTRACTING') {
+    if (isPending(status)) {
         return <CircularProgress size={16} />;
     }
     return (
@@ -77,7 +78,7 @@ export function ReviewQueuePage({ onUpload, onSelect }: ReviewQueuePageProps) {
             clearTimeout(pollTimer.current);
             pollTimer.current = null;
         }
-        if (next.some((r) => r.status === 'QUEUED' || r.status === 'EXTRACTING')) {
+        if (next.some((r) => isPending(r.status))) {
             pollTimer.current = setTimeout(() => void refresh(), POLL_INTERVAL_MS);
         }
     }
@@ -148,11 +149,8 @@ export function ReviewQueuePage({ onUpload, onSelect }: ReviewQueuePageProps) {
                             </TableHead>
                             <TableBody>
                                 {receipts.map((receipt) => {
-                                    const pending = receipt.status === 'QUEUED' || receipt.status === 'EXTRACTING';
-                                    const clickable =
-                                        receipt.status !== 'QUEUED' &&
-                                        receipt.status !== 'EXTRACTING' &&
-                                        receipt.status !== 'FAILED';
+                                    const pending = isPending(receipt.status);
+                                    const clickable = hasReliableExtraction(receipt.status);
                                     return (
                                         <TableRow
                                             key={receipt.id}
@@ -213,7 +211,7 @@ export function ReviewQueuePage({ onUpload, onSelect }: ReviewQueuePageProps) {
                                                         </Tooltip>
                                                     </Stack>
                                                 </TableCell>
-                                            ) : receipt.status === 'FAILED' ? (
+                                            ) : canRetry(receipt.status) ? (
                                                 <TableCell colSpan={7}>
                                                     <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
                                                         <Typography color="error" variant="body2">

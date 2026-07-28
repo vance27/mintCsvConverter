@@ -7,6 +7,7 @@ import { cardAmount } from './tender.js';
 import { normalizeItemName } from './normalizeItemName.js';
 import { aggregateSplits, evenPercentages, type AggregateLine } from './aggregate.js';
 import { retainReceiptSource } from './receiptStorage.js';
+import { canRetry } from './receiptStateMachine.js';
 import type { PrismaClient } from './db.js';
 import { Prisma, type Item, type Participant } from './generated/prisma/client.js';
 import type { ExtractedLineItem } from './types.js';
@@ -63,7 +64,7 @@ export async function queueReceiptForIngest(
 
     const existing = await prisma.receipt.findUnique({ where: { sourceSha256 } });
     if (existing) {
-        if (existing.status === 'FAILED') {
+        if (canRetry(existing.status)) {
             await prisma.receipt.update({
                 where: { id: existing.id },
                 data: { status: 'QUEUED', extractionError: null },
