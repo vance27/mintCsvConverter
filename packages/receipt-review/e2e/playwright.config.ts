@@ -11,7 +11,6 @@ export default defineConfig({
     fullyParallel: false,
     retries: 0,
     reporter: 'list',
-    globalSetup: './globalSetup.ts',
     use: {
         baseURL: `http://localhost:${PORT}`,
         trace: 'on-first-retry',
@@ -23,8 +22,11 @@ export default defineConfig({
         // closer to what actually ships. Never reused across runs: this must
         // always be a fresh server bound to the isolated e2e DB below, never an
         // already-running dev server pointed at the real one.
+        // The migrateDb.ts step runs (and completes) before the server starts,
+        // rather than via Playwright's globalSetup hook — see migrateDb.ts for
+        // why that ordering can't be trusted to Playwright itself.
         command:
-            'nx run @mint-csv-converter/receipt-review:build && node --import tsx packages/receipt-review/src/server/index.ts',
+            'nx run @mint-csv-converter/receipt-review:build && node --import tsx packages/receipt-review/e2e/migrateDb.ts && node --import tsx packages/receipt-review/src/server/index.ts',
         cwd: REPO_ROOT,
         url: `http://localhost:${PORT}/api/health`,
         reuseExistingServer: false,
