@@ -4,6 +4,8 @@ export interface ReceiptSummary {
     id: number;
     store: string;
     payer: string;
+    /** When this receipt was first uploaded/queued — used by the client to show an elapsed-time counter on an EXTRACTING row. */
+    createdAt: string;
     /** Null for a not-yet-extracted QUEUED/EXTRACTING/FAILED row. */
     purchaseDate: string | null;
     total: number | null;
@@ -23,15 +25,17 @@ export interface ReceiptSummary {
 }
 
 // Explicit priority instead of relying on enum-alphabetical order, now that
-// there are 5 statuses: a stuck FAILED row needs attention first, EXTRACTING
-// is worth seeing live, QUEUED next, then needs-review (EXTRACTED, itself
-// sub-sorted by reconciled/purchaseDate below), SUBMITTED last.
+// there are 6 statuses: a stuck FAILED or deliberately-CANCELLED row needs
+// attention first, EXTRACTING is worth seeing live, QUEUED next, then
+// needs-review (EXTRACTED, itself sub-sorted by reconciled/purchaseDate
+// below), SUBMITTED last.
 const STATUS_PRIORITY: Record<ReceiptStatus, number> = {
     [ReceiptStatus.FAILED]: 0,
-    [ReceiptStatus.EXTRACTING]: 1,
-    [ReceiptStatus.QUEUED]: 2,
-    [ReceiptStatus.EXTRACTED]: 3,
-    [ReceiptStatus.SUBMITTED]: 4,
+    [ReceiptStatus.CANCELLED]: 1,
+    [ReceiptStatus.EXTRACTING]: 2,
+    [ReceiptStatus.QUEUED]: 3,
+    [ReceiptStatus.EXTRACTED]: 4,
+    [ReceiptStatus.SUBMITTED]: 5,
 };
 
 /**
@@ -68,6 +72,7 @@ export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary
             id: r.id,
             store: r.store.name,
             payer: r.payer.name,
+            createdAt: r.createdAt.toISOString(),
             purchaseDate: r.purchaseDate ? r.purchaseDate.toISOString() : null,
             total: r.total,
             cardAmount: r.cardAmount,

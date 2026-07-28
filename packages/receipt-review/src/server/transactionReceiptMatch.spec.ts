@@ -8,6 +8,7 @@ function receipt(overrides: Partial<ReceiptSummary> = {}): ReceiptSummary {
         id: 1,
         store: 'Costco',
         payer: 'Brian',
+        createdAt: '2026-06-20T00:00:00.000Z',
         purchaseDate: '2026-06-20T00:00:00.000Z',
         total: 150.0,
         cardAmount: 150.0,
