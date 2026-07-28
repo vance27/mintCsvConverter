@@ -148,6 +148,61 @@ describe('ingestReceipt', () => {
     expect(lineItem.itemId).toBe(existingItem.id);
   });
 
+  it('gives unrelated blank-name lines their own separate items instead of merging them via an empty normalizedName', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    // Two genuinely different, unrelated products that both failed to get a
+    // name read (blank rawName) — a real ingest showed these silently
+    // merging into one shared Item because both normalize to "".
+    const blankNameJson = {
+      ...RECEIPT_JSON,
+      items: [
+        { itemCode: '378710', rawName: '', quantity: 1, unitPrice: 4.0, lineTotal: 4.0, taxable: false, discountAmount: 0 },
+        { itemCode: '2787EMS', rawName: '', quantity: 1, unitPrice: 5.0, lineTotal: 5.0, taxable: false, discountAmount: 0 },
+      ],
+    };
+    const pdfPath = writeFixturePdf(workDir, 'r8.pdf');
+    const deps: IngestDeps = { prisma, client: fakeClient(blankNameJson), receiptsBaseDir: join(workDir, 'store') };
+
+    const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+    expect(result.newItemCount).toBe(2);
+    await expect(prisma.item.count()).resolves.toBe(2);
+    const lineItems = await prisma.lineItem.findMany({ where: { receiptId: result.receiptId } });
+    expect(new Set(lineItems.map((li) => li.itemId)).size).toBe(2);
+  });
+
+  it('reuses an existing item instead of crashing when its own lookup misses but create() collides on the unique constraint', async () => {
+    const { prisma, workDir } = setup();
+    await seedParticipants(prisma, ['Brian', 'Patrice']);
+    const store = await prisma.store.create({ data: { name: 'Costco' } });
+    // Simulates a leftover Item from an earlier attempt on this same
+    // receipt that failed partway through (Item creation isn't part of the
+    // transaction, so it survives even though that attempt's receipt ended
+    // up FAILED) — resolveItem's own lookup racing/missing it is forced
+    // here rather than left to chance, so the create()-collision recovery
+    // path is actually exercised instead of just taking the normal
+    // lookup-hit path.
+    const leftover = await prisma.item.create({
+      data: { storeId: store.id, itemCode: '933402', normalizedName: 'DORITOS 3OZ', lastSeenName: 'DORITOS 3OZ' },
+    });
+    vi.spyOn(prisma.item, 'findUnique').mockResolvedValueOnce(null);
+
+    const json = {
+      ...RECEIPT_JSON,
+      items: [{ itemCode: '933402', rawName: 'DORITOS 3OZ', quantity: 1, unitPrice: 6.99, lineTotal: 6.99, taxable: false, discountAmount: 0 }],
+    };
+    const pdfPath = writeFixturePdf(workDir, 'r9.pdf');
+    const deps: IngestDeps = { prisma, client: fakeClient(json), receiptsBaseDir: join(workDir, 'store') };
+
+    const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+    expect(result.newItemCount).toBe(0);
+    await expect(prisma.item.count()).resolves.toBe(1);
+    const lineItem = await prisma.lineItem.findFirstOrThrow({ where: { receiptId: result.receiptId } });
+    expect(lineItem.itemId).toBe(leftover.id);
+  });
+
   it('persists a tender breakdown and uses only the card portion for cardAmount when a purchase is split across tender types', async () => {
     const { prisma, workDir } = setup();
     await seedParticipants(prisma, ['Brian', 'Patrice']);

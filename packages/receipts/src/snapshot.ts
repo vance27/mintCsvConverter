@@ -17,7 +17,7 @@ export interface ItemSnapshotRow {
   id: number;
   storeId: number;
   itemCode: string | null;
-  normalizedName: string;
+  normalizedName: string | null;
   displayName: string | null;
   lastSeenName: string;
   createdAt: string;

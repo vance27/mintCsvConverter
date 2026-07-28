@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { renderPdfPages } from './renderPdf.js';
 import { defaultOllamaModel, type VisionChatClient } from './ollamaClient.js';
+import { foldDiscountReferenceLines } from './discountReferenceLines.js';
 import type { ExtractedReceipt } from './types.js';
 
 const lineItemSchema = z.object({
@@ -124,5 +125,5 @@ export async function extractReceipt(
   if (!result.success) {
     throw new Error(`Model's extracted receipt failed validation: ${z.prettifyError(result.error)}`);
   }
-  return result.data;
+  return { ...result.data, items: foldDiscountReferenceLines(result.data.items) };
 }

@@ -39,7 +39,7 @@ model Item {
   id             Int      @id @default(autoincrement())
   storeId        Int
   itemCode       String?
-  normalizedName String
+  normalizedName String?
   displayName    String?
   lastSeenName   String
   createdAt      DateTime @default(now())
@@ -50,6 +50,10 @@ model Item {
   lineItems         LineItem[]
 
   // Item-code match is preferred; normalizedName is the per-store fallback.
+  // Both are nullable so a line the model couldn't read a code or name for
+  // at all never collides with another equally-unidentifiable line — SQL
+  // treats every NULL as distinct under a unique index, unlike two equal
+  // empty strings, which previously merged unrelated items together.
   @@unique([storeId, itemCode])
   @@unique([storeId, normalizedName])
 }
