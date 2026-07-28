@@ -9,7 +9,13 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-const FORBIDDEN = ['PrismaClient', 'better-sqlite3', '@prisma/adapter-better-sqlite3', 'ollama', 'pdf-to-img'];
+// 'ollama.com' (the package's default remote-model host, baked into
+// ollama-js's dist/*.mjs as a string literal) rather than the bare package
+// name 'ollama' — the upload page's Model picker (docs/adr/0007) legitimately
+// calls the /api/ollama-models route from client code, and the bare name
+// false-positived on that route literal (`ollama-models`) even when the real
+// ollama npm package was never bundled.
+const FORBIDDEN = ['PrismaClient', 'better-sqlite3', '@prisma/adapter-better-sqlite3', 'ollama.com', 'pdf-to-img'];
 const ASSETS_DIR = join(import.meta.dirname, '..', 'dist', 'client', 'assets');
 
 const files = readdirSync(ASSETS_DIR).filter((f) => f.endsWith('.js'));
