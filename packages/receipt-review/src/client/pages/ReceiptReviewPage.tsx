@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { InferResponseType } from 'hono/client';
 import { aggregateSplits, type AggregateLine } from '@mint-csv-converter/receipts/aggregate';
 import { describeReconcileMismatch } from '@mint-csv-converter/receipts/reconcile';
+import { storeNamesDisagree } from '@mint-csv-converter/receipts/storeNameMatch';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {
     Alert,
@@ -243,6 +244,12 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                                 ? ''
                                 : ` ⚠ ${detail.reconcile ? describeReconcileMismatch(detail.reconcile) : 'low confidence'} — check carefully against the PDF.`}
                         </Typography>
+                        {storeNamesDisagree(detail.store, detail.extractedStoreName) ? (
+                            <Alert severity="warning">
+                                Declared store is "{detail.store}", but the receipt itself reads "
+                                {detail.extractedStoreName}" — check this is the right receipt before submitting.
+                            </Alert>
+                        ) : null}
                         {error ? <Alert severity="error">{error}</Alert> : null}
 
                         {detail.lineItems.map((line) => {
