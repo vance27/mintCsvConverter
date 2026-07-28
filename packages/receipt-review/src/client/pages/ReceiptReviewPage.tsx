@@ -4,6 +4,7 @@ import { aggregateSplits, type AggregateLine } from '@mint-csv-converter/receipt
 import { describeReconcileMismatch } from '@mint-csv-converter/receipts/reconcile';
 import { storeNamesDisagree } from '@mint-csv-converter/receipts/storeNameMatch';
 import DeleteIcon from '@mui/icons-material/Delete';
+import RestoreIcon from '@mui/icons-material/RestoreFromTrash';
 import {
     Alert,
     Box,
@@ -20,6 +21,8 @@ import {
     Slider,
     Stack,
     TextField,
+    ToggleButton,
+    ToggleButtonGroup,
     Tooltip,
     Typography,
     Button,
@@ -42,6 +45,23 @@ interface Draft {
     rightPercent: number;
     /** Reviewer-editable "what was actually paid" for this line — defaults to lineTotal - discountAmount. */
     netPrice: number;
+    unitPrice: number;
+    quantity: number;
+    taxable: boolean | null;
+}
+
+interface AddItemForm {
+    itemCode: string;
+    rawName: string;
+    unitPrice: string;
+    quantity: string;
+    taxable: boolean | null;
+}
+
+const emptyAddForm: AddItemForm = { itemCode: '', rawName: '', unitPrice: '', quantity: '1', taxable: null };
+
+function round2(n: number): number {
+    return Math.round(n * 100) / 100;
 }
 
 /**
@@ -62,7 +82,38 @@ function draftFromLineItem(line: LineItemDetail, leftName: string, rightName: st
         displayName: line.displayName ?? '',
         rightPercent: line.splits[rightName] ?? 100 - (line.splits[leftName] ?? 50),
         netPrice: line.lineTotal - line.discountAmount,
+        unitPrice: line.unitPrice,
+        quantity: line.quantity,
+        taxable: line.taxable,
     };
+}
+
+/** Adds a fresh draft for any line item not already tracked (e.g. one just added), without disturbing in-progress edits to existing lines. */
+function mergeNewDrafts(
+    prev: Record<number, Draft>,
+    lineItems: LineItemDetail[],
+    leftName: string,
+    rightName: string,
+): Record<number, Draft> {
+    const next = { ...prev };
+    for (const line of lineItems) {
+        if (!(line.id in next)) {
+            next[line.id] = draftFromLineItem(line, leftName, rightName);
+        }
+    }
+    return next;
+}
+
+/** unitPrice/quantity are the "printed" values; shifting either preserves the dollar discount already dialed into netPrice, matching how the server leaves discountAmount alone when netPrice isn't also submitted. */
+function applyPriceFieldChange(draft: Draft, field: 'unitPrice' | 'quantity', value: number): Draft {
+    const oldLineTotal = draft.unitPrice * draft.quantity;
+    const updated = { ...draft, [field]: value };
+    const newLineTotal = updated.unitPrice * updated.quantity;
+    return { ...updated, netPrice: round2(draft.netPrice + (newLineTotal - oldLineTotal)) };
+}
+
+function taxableToggleValue(taxable: boolean | null): 'yes' | 'no' | 'unknown' {
+    return taxable === null ? 'unknown' : taxable ? 'yes' : 'no';
 }
 
 export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptReviewPageProps) {
@@ -72,6 +123,10 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
     const [submitting, setSubmitting] = useState(false);
     const [deletingLineId, setDeletingLineId] = useState<number | null>(null);
     const [confirmingDeleteId, setConfirmingDeleteId] = useState<number | null>(null);
+    const [restoringLineId, setRestoringLineId] = useState<number | null>(null);
+    const [savingCodeId, setSavingCodeId] = useState<number | null>(null);
+    const [addForm, setAddForm] = useState<AddItemForm>(emptyAddForm);
+    const [addingItem, setAddingItem] = useState(false);
 
     const [leftName, rightName] = useMemo(
         () => (detail ? resolveNames(detail.lineItems) : ['Brian', 'Patrice']),
@@ -90,11 +145,13 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
         setDrafts(Object.fromEntries(data.lineItems.map((li) => [li.id, draftFromLineItem(li, left, right)])));
     }
 
+    const activeLineItems = useMemo(() => detail?.lineItems.filter((li) => li.removedAt === null) ?? [], [detail]);
+
     const liveAggregate = useMemo(() => {
         if (!detail) {
             return { [leftName]: 0, [rightName]: 0 };
         }
-        const lines: AggregateLine[] = detail.lineItems.map((line) => {
+        const lines: AggregateLine[] = activeLineItems.map((line) => {
             const draft = drafts[line.id];
             const netPrice = draft?.netPrice ?? line.lineTotal - line.discountAmount;
             const rightPercent = draft?.rightPercent ?? 50;
@@ -105,17 +162,14 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
             };
         });
         return aggregateSplits(lines, [leftName, rightName]);
-    }, [detail, drafts, leftName, rightName]);
+    }, [detail, activeLineItems, drafts, leftName, rightName]);
 
     const liveTotal = useMemo(() => {
-        if (!detail) {
-            return 0;
-        }
-        return detail.lineItems.reduce(
+        return activeLineItems.reduce(
             (sum, line) => sum + (drafts[line.id]?.netPrice ?? line.lineTotal - line.discountAmount),
             0,
         );
-    }, [detail, drafts]);
+    }, [activeLineItems, drafts]);
 
     async function deleteLine(lineItemId: number): Promise<void> {
         setDeletingLineId(lineItemId);
@@ -124,17 +178,78 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                 param: { id: String(receiptId), lineItemId: String(lineItemId) },
             });
             if (res.ok) {
-                const data = await res.json();
-                setDetail(data);
-                setDrafts((prev) => {
-                    const next = { ...prev };
-                    delete next[lineItemId];
-                    return next;
-                });
+                setDetail(await res.json());
             }
         } finally {
             setDeletingLineId(null);
             setConfirmingDeleteId(null);
+        }
+    }
+
+    async function restoreLine(lineItemId: number): Promise<void> {
+        setRestoringLineId(lineItemId);
+        try {
+            const res = await api.receipts[':id']['line-items'][':lineItemId'].restore.$post({
+                param: { id: String(receiptId), lineItemId: String(lineItemId) },
+            });
+            if (res.ok) {
+                setDetail(await res.json());
+            }
+        } finally {
+            setRestoringLineId(null);
+        }
+    }
+
+    async function saveItemCode(lineItemId: number, itemCode: string, currentCode: string | null): Promise<void> {
+        const trimmed = itemCode.trim();
+        if (!trimmed || trimmed === (currentCode ?? '')) {
+            return;
+        }
+        setSavingCodeId(lineItemId);
+        try {
+            const res = await api.receipts[':id']['line-items'][':lineItemId']['item-code'].$patch({
+                param: { id: String(receiptId), lineItemId: String(lineItemId) },
+                json: { itemCode: trimmed },
+            });
+            if (res.ok) {
+                setDetail(await res.json());
+            }
+        } finally {
+            setSavingCodeId(null);
+        }
+    }
+
+    async function addItem(): Promise<void> {
+        const unitPrice = Number(addForm.unitPrice);
+        const quantity = Number(addForm.quantity);
+        if (!addForm.rawName.trim() || !Number.isFinite(unitPrice) || !Number.isFinite(quantity) || quantity <= 0) {
+            setError('Enter a name, unit price, and a positive quantity to add a line item.');
+            return;
+        }
+        setAddingItem(true);
+        setError(null);
+        try {
+            const res = await api.receipts[':id']['line-items'].$post({
+                param: { id: String(receiptId) },
+                json: {
+                    itemCode: addForm.itemCode.trim() || null,
+                    rawName: addForm.rawName.trim(),
+                    unitPrice,
+                    quantity,
+                    taxable: addForm.taxable,
+                },
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const [left, right] = resolveNames(data.lineItems);
+                setDetail(data);
+                setDrafts((prev) => mergeNewDrafts(prev, data.lineItems, left, right));
+                setAddForm(emptyAddForm);
+            } else {
+                setError('Could not add this line item.');
+            }
+        } finally {
+            setAddingItem(false);
         }
     }
 
@@ -146,12 +261,14 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
         setError(null);
         setSubmitting(true);
         try {
-            // No per-line "Save" step — every line's current slider/name value is
-            // saved as part of one Submit action, so an untouched (default) slider
-            // is an implicit "the default is fine," not something you have to
-            // separately confirm.
+            // No per-line "Save" step — every active line's current slider/name
+            // value is saved as part of one Submit action, so an untouched
+            // (default) slider is an implicit "the default is fine," not
+            // something you have to separately confirm. Removed lines are never
+            // reviewed and are skipped here — the server-side submit gate
+            // excludes them from the "every line reviewed" requirement too.
             const patchResults = await Promise.all(
-                detail.lineItems.map((line) => {
+                activeLineItems.map((line) => {
                     const draft = drafts[line.id];
                     const splits = {
                         [leftName]: 100 - (draft?.rightPercent ?? 50),
@@ -159,7 +276,14 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                     };
                     return api.receipts[':id']['line-items'][':lineItemId'].$patch({
                         param: { id: String(receiptId), lineItemId: String(line.id) },
-                        json: { splits, displayName: draft?.displayName || undefined, netPrice: draft?.netPrice },
+                        json: {
+                            splits,
+                            displayName: draft?.displayName || undefined,
+                            netPrice: draft?.netPrice,
+                            unitPrice: draft?.unitPrice,
+                            quantity: draft?.quantity,
+                            taxable: draft?.taxable,
+                        },
                     });
                 }),
             );
@@ -253,11 +377,33 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                         {error ? <Alert severity="error">{error}</Alert> : null}
 
                         {detail.lineItems.map((line) => {
-                            const draft = drafts[line.id] ?? {
-                                displayName: line.displayName ?? '',
-                                rightPercent: 50,
-                                netPrice: line.lineTotal - line.discountAmount,
-                            };
+                            if (line.removedAt !== null) {
+                                return (
+                                    <Paper key={line.id} sx={{ p: 2, opacity: 0.6 }}>
+                                        <Stack
+                                            direction="row"
+                                            sx={{ justifyContent: 'space-between', alignItems: 'center' }}
+                                        >
+                                            <Typography sx={{ textDecoration: 'line-through' }}>
+                                                {line.displayName ?? line.rawName} — ${line.lineTotal.toFixed(2)}
+                                            </Typography>
+                                            <Tooltip title="Restore this line item">
+                                                <span>
+                                                    <IconButton
+                                                        size="small"
+                                                        disabled={restoringLineId === line.id}
+                                                        onClick={() => void restoreLine(line.id)}
+                                                    >
+                                                        <RestoreIcon fontSize="small" />
+                                                    </IconButton>
+                                                </span>
+                                            </Tooltip>
+                                        </Stack>
+                                    </Paper>
+                                );
+                            }
+
+                            const draft = drafts[line.id] ?? draftFromLineItem(line, leftName, rightName);
                             const changePercent = line.priceHistory.changePercent;
                             return (
                                 <Paper key={line.id} sx={{ p: 2 }}>
@@ -308,6 +454,72 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                                                   ? ` · was $${line.priceHistory.previousUnitPrice.toFixed(2)} (${changePercent > 0 ? '+' : ''}${changePercent.toFixed(0)}%)`
                                                   : ' · no price change'}
                                         </Typography>
+                                        <Stack direction="row" spacing={1}>
+                                            <TextField
+                                                label="Unit price"
+                                                type="number"
+                                                size="small"
+                                                value={draft.unitPrice}
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    if (!Number.isNaN(value)) {
+                                                        setDrafts((prev) => ({
+                                                            ...prev,
+                                                            [line.id]: applyPriceFieldChange(draft, 'unitPrice', value),
+                                                        }));
+                                                    }
+                                                }}
+                                                slotProps={{ htmlInput: { step: 0.01, min: 0 } }}
+                                                sx={{ maxWidth: 130 }}
+                                            />
+                                            <TextField
+                                                label="Quantity"
+                                                type="number"
+                                                size="small"
+                                                value={draft.quantity}
+                                                onChange={(e) => {
+                                                    const value = Number(e.target.value);
+                                                    if (!Number.isNaN(value) && value > 0) {
+                                                        setDrafts((prev) => ({
+                                                            ...prev,
+                                                            [line.id]: applyPriceFieldChange(draft, 'quantity', value),
+                                                        }));
+                                                    }
+                                                }}
+                                                slotProps={{ htmlInput: { step: 1, min: 0 } }}
+                                                sx={{ maxWidth: 110 }}
+                                            />
+                                            <TextField
+                                                key={`code-${line.id}-${line.itemId}`}
+                                                label="Item code"
+                                                size="small"
+                                                defaultValue={line.rawItemCode ?? ''}
+                                                disabled={savingCodeId === line.id}
+                                                onBlur={(e) => void saveItemCode(line.id, e.target.value, line.rawItemCode)}
+                                                sx={{ maxWidth: 140 }}
+                                            />
+                                        </Stack>
+                                        <ToggleButtonGroup
+                                            size="small"
+                                            exclusive
+                                            value={taxableToggleValue(draft.taxable)}
+                                            onChange={(_e, value: 'yes' | 'no' | 'unknown' | null) => {
+                                                if (value === null) {
+                                                    return;
+                                                }
+                                                setDrafts((prev) => ({
+                                                    ...prev,
+                                                    [line.id]: {
+                                                        ...draft,
+                                                        taxable: value === 'unknown' ? null : value === 'yes',
+                                                    },
+                                                }));
+                                            }}
+                                        >
+                                            <ToggleButton value="yes">Taxable</ToggleButton>
+                                            <ToggleButton value="no">Not taxable</ToggleButton>
+                                            <ToggleButton value="unknown">Unknown</ToggleButton>
+                                        </ToggleButtonGroup>
                                         <TextField
                                             label="Price paid"
                                             type="number"
@@ -349,6 +561,69 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                             );
                         })}
 
+                        <Paper sx={{ p: 2 }} variant="outlined">
+                            <Stack spacing={1.5}>
+                                <Typography variant="subtitle2">Add a line item the receipt is missing</Typography>
+                                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+                                    <TextField
+                                        label="Name"
+                                        size="small"
+                                        value={addForm.rawName}
+                                        onChange={(e) => setAddForm((prev) => ({ ...prev, rawName: e.target.value }))}
+                                        sx={{ flex: 1, minWidth: 160 }}
+                                    />
+                                    <TextField
+                                        label="Item code"
+                                        size="small"
+                                        value={addForm.itemCode}
+                                        onChange={(e) => setAddForm((prev) => ({ ...prev, itemCode: e.target.value }))}
+                                        sx={{ maxWidth: 140 }}
+                                    />
+                                    <TextField
+                                        label="Unit price"
+                                        type="number"
+                                        size="small"
+                                        value={addForm.unitPrice}
+                                        onChange={(e) => setAddForm((prev) => ({ ...prev, unitPrice: e.target.value }))}
+                                        slotProps={{ htmlInput: { step: 0.01, min: 0 } }}
+                                        sx={{ maxWidth: 130 }}
+                                    />
+                                    <TextField
+                                        label="Quantity"
+                                        type="number"
+                                        size="small"
+                                        value={addForm.quantity}
+                                        onChange={(e) => setAddForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                                        slotProps={{ htmlInput: { step: 1, min: 0 } }}
+                                        sx={{ maxWidth: 110 }}
+                                    />
+                                </Stack>
+                                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                                    <ToggleButtonGroup
+                                        size="small"
+                                        exclusive
+                                        value={taxableToggleValue(addForm.taxable)}
+                                        onChange={(_e, value: 'yes' | 'no' | 'unknown' | null) => {
+                                            if (value === null) {
+                                                return;
+                                            }
+                                            setAddForm((prev) => ({
+                                                ...prev,
+                                                taxable: value === 'unknown' ? null : value === 'yes',
+                                            }));
+                                        }}
+                                    >
+                                        <ToggleButton value="yes">Taxable</ToggleButton>
+                                        <ToggleButton value="no">Not taxable</ToggleButton>
+                                        <ToggleButton value="unknown">Unknown</ToggleButton>
+                                    </ToggleButtonGroup>
+                                    <Button variant="outlined" disabled={addingItem} onClick={() => void addItem()}>
+                                        {addingItem ? 'Adding…' : 'Add item'}
+                                    </Button>
+                                </Stack>
+                            </Stack>
+                        </Paper>
+
                         <Divider />
                         <Typography>
                             Live aggregate: {leftName} {liveAggregate[leftName]}%, {rightName}{' '}
@@ -372,7 +647,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
             >
                 <DialogTitle>Remove this line item?</DialogTitle>
                 <DialogContent>
-                    <Typography>This can't be undone.</Typography>
+                    <Typography>You can restore it afterward from this same page.</Typography>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => setConfirmingDeleteId(null)} disabled={deletingLineId !== null}>
