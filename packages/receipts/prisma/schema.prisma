@@ -102,7 +102,10 @@ model Receipt {
   id               Int           @id @default(autoincrement())
   storeId          Int
   payerId          Int
-  sourceSha256     String        @unique
+  // No longer @unique alone — see the (sourceSha256, model) compound unique
+  // below (docs/adr/0007): the same PDF bytes may legitimately have more
+  // than one Receipt row, one per model it's been extracted with.
+  sourceSha256     String
   sourcePath       String
   // The uploaded file's own name, captured at enqueue time so a
   // QUEUED/EXTRACTING/FAILED row has something meaningful to show before
@@ -142,6 +145,13 @@ model Receipt {
   // fact rather than not at all (docs/adr/0004). Null when the model
   // couldn't read one, or for a receipt ingested before this field existed.
   extractedStoreName String?
+  // Ollama model used for this receipt's extraction (docs/adr/0007) — always
+  // set, resolved at queue time from the per-upload choice or
+  // defaultOllamaModel()'s env-based fallback. The schema-level default
+  // below only backfills rows that predate this column, which were all
+  // extracted under that same env-based fallback (model wasn't yet
+  // per-upload configurable).
+  model              String             @default("qwen2.5vl:32b")
 
   store             Store              @relation(fields: [storeId], references: [id])
   payer             Participant        @relation(fields: [payerId], references: [id])
@@ -149,6 +159,11 @@ model Receipt {
   priceObservations PriceObservation[]
   tenders           ReceiptTender[]
 
+  // Lets the same physical receipt be re-run under a different model for
+  // side-by-side comparison (docs/adr/0007) — a genuine second Receipt row,
+  // not a duplicate. Re-ingesting identical bytes under an already-tried
+  // model still reuses the existing row via this same pair.
+  @@unique([sourceSha256, model])
   @@index([status, createdAt])
 }
 
