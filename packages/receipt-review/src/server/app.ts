@@ -106,6 +106,18 @@ const listTransactionsQuerySchema = z.object({
         .default(25),
 });
 
+// One entry per uploaded file, aligned by array index — see POST
+// /api/uploads (docs/adr/0005, docs/adr/0007): each file in a batch may
+// legitimately be a different store/payer/model, so a single shared value
+// for the whole request no longer fits.
+const uploadMetaSchema = z.array(
+    z.object({
+        store: z.string().min(1),
+        payer: z.string().min(1),
+        model: z.string().min(1),
+    }),
+);
+
 function parseIntParam(value: string): number {
     const parsed = Number(value);
     if (!Number.isInteger(parsed)) {
@@ -230,23 +242,47 @@ export function createApp(deps: AppDeps) {
         // GET /api/receipts is the source of truth for extraction progress from
         // here on (no job-id polling), since every upload is now a real,
         // durable row rather than in-memory job state.
+        // `meta` is a JSON-encoded array of { store, payer, model }, one entry
+        // per file, aligned by index with the `files` array — the upload
+        // page's editable table lets each row in a batch differ (docs/adr/0005).
         .post('/api/uploads', async (c) => {
             const body = await c.req.parseBody({ all: true });
             const files = ([] as File[]).concat((body['files'] ?? []) as File | File[]);
             if (files.length === 0) {
                 throw new HTTPException(400, { message: 'No files uploaded' });
             }
-            const store = typeof body['store'] === 'string' ? body['store'] : 'Costco';
-            const payer = typeof body['payer'] === 'string' ? body['payer'] : 'Brian';
+            if (typeof body['meta'] !== 'string') {
+                throw new HTTPException(400, { message: 'Missing meta' });
+            }
+            let metaJson: unknown;
+            try {
+                metaJson = JSON.parse(body['meta']);
+            } catch {
+                throw new HTTPException(400, { message: 'meta must be valid JSON' });
+            }
+            const parsedMeta = uploadMetaSchema.safeParse(metaJson);
+            if (!parsedMeta.success || parsedMeta.data.length !== files.length) {
+                throw new HTTPException(400, { message: 'meta must have one { store, payer, model } entry per file' });
+            }
+            const meta = parsedMeta.data;
 
             const receiptIds = await Promise.all(
-                files.map(async (file) => {
+                files.map(async (file, i) => {
                     const buffer = new Uint8Array(await file.arrayBuffer());
-                    const { receiptId } = await uploadQueue.enqueue(buffer, file.name, { store, payer });
+                    const { receiptId } = await uploadQueue.enqueue(buffer, file.name, meta[i]);
                     return receiptId;
                 }),
             );
             return c.json({ receiptIds });
+        })
+
+        // Active Participants, for the upload page's Payer picker (docs/adr/0003) — a strict closed set, unlike Store.
+        .get('/api/participants', async (c) => {
+            const participants = await deps.prisma.participant.findMany({
+                where: { active: true },
+                orderBy: { id: 'asc' },
+            });
+            return c.json(participants.map((p) => ({ id: p.id, name: p.name })));
         })
 
         // Re-queues a FAILED receipt for another extraction attempt without

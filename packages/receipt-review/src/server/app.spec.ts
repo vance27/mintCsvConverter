@@ -16,6 +16,13 @@ async function citiProfileId(prisma: PrismaClient): Promise<number> {
     return (await prisma.csvImportProfile.findFirstOrThrow({ where: { name: 'Citi (default)' } })).id;
 }
 
+/** POST /api/uploads' meta field: one { store, payer, model } entry per file, in order — see app.ts's uploadMetaSchema. */
+function uploadMeta(count: number, overrides: Partial<{ store: string; payer: string; model: string }> = {}): string {
+    return JSON.stringify(
+        Array.from({ length: count }, () => ({ store: 'Costco', payer: 'Brian', model: 'qwen2.5vl:32b', ...overrides })),
+    );
+}
+
 /** A minimal, valid, distinct-content PDF — same fixture style as packages/receipts' own specs. */
 function writeFixturePdf(dir: string, name: string, width = 200): string {
     const path = join(dir, name);
@@ -239,8 +246,7 @@ describe('app', () => {
         const pdfPath = writeFixturePdf(dir, 'upload.pdf');
         const formData = new FormData();
         formData.append('files', new Blob([readFileSync(pdfPath)]), 'upload.pdf');
-        formData.append('store', 'Costco');
-        formData.append('payer', 'Brian');
+        formData.append('meta', uploadMeta(1));
 
         const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
         expect(uploadRes.status).toBe(200);
@@ -259,6 +265,74 @@ describe('app', () => {
         await app.uploadQueue.waitUntilIdle();
     });
 
+    it('queues each file in a batch with its own store/payer/model, keyed by array index', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        dir = mkdtempSync(join(tmpdir(), 'app-test-'));
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const app = createApp({ prisma, client: fakeClient({}), receiptsBaseDir: join(dir, 'retained') });
+
+        const formData = new FormData();
+        formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'a.pdf'))]), 'a.pdf');
+        formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'b.pdf', 210))]), 'b.pdf');
+        formData.append(
+            'meta',
+            JSON.stringify([
+                { store: 'Costco', payer: 'Brian', model: 'qwen2.5vl:32b' },
+                { store: 'TARGET', payer: 'Patrice', model: 'qwen2.5vl:7b' },
+            ]),
+        );
+
+        const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
+        expect(uploadRes.status).toBe(200);
+        const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
+        expect(receiptIds).toHaveLength(2);
+
+        type DetailStoreJson = { store: string; payer: string; model: string };
+        const [first, second] = (await Promise.all([
+            (await app.request(`/api/receipts/${receiptIds[0]}`)).json(),
+            (await app.request(`/api/receipts/${receiptIds[1]}`)).json(),
+        ])) as DetailStoreJson[];
+        expect(first).toMatchObject({ store: 'Costco', payer: 'Brian', model: 'qwen2.5vl:32b' });
+        expect(second).toMatchObject({ store: 'TARGET', payer: 'Patrice', model: 'qwen2.5vl:7b' });
+
+        await app.uploadQueue.waitUntilIdle();
+    });
+
+    it('rejects an upload whose meta does not have one entry per file', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        dir = mkdtempSync(join(tmpdir(), 'app-test-'));
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const app = createApp({ prisma, client: fakeClient({}), receiptsBaseDir: join(dir, 'retained') });
+
+        const formData = new FormData();
+        formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'a.pdf'))]), 'a.pdf');
+        formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'b.pdf', 210))]), 'b.pdf');
+        formData.append('meta', uploadMeta(1));
+
+        const res = await app.request('/api/uploads', { method: 'POST', body: formData });
+        expect(res.status).toBe(400);
+    });
+
+    it('lists active participants for the upload page payer picker', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        dir = mkdtempSync(join(tmpdir(), 'app-test-'));
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const [brian, patrice] = await Promise.all([
+            prisma.participant.findUniqueOrThrow({ where: { name: 'Brian' } }),
+            prisma.participant.findUniqueOrThrow({ where: { name: 'Patrice' } }),
+        ]);
+        const app = createApp({ prisma, client: fakeClient({}), receiptsBaseDir: join(dir, 'retained') });
+
+        const res = await app.request('/api/participants');
+
+        expect(res.status).toBe(200);
+        const participants = (await res.json()) as { id: number; name: string }[];
+        expect(participants).toEqual([
+            { id: brian.id, name: 'Brian' },
+            { id: patrice.id, name: 'Patrice' },
+        ]);
+    });
+
     it('retries a FAILED upload without re-uploading the file', async () => {
         ({ prisma, cleanup } = createTestDb());
         dir = mkdtempSync(join(tmpdir(), 'app-test-'));
@@ -273,8 +347,7 @@ describe('app', () => {
         const pdfPath = writeFixturePdf(dir, 'fails.pdf');
         const formData = new FormData();
         formData.append('files', new Blob([readFileSync(pdfPath)]), 'fails.pdf');
-        formData.append('store', 'Costco');
-        formData.append('payer', 'Brian');
+        formData.append('meta', uploadMeta(1));
 
         const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
         const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
@@ -379,8 +452,7 @@ describe('app', () => {
         const formData = new FormData();
         formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'a.pdf'))]), 'a.pdf');
         formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'b.pdf', 210))]), 'b.pdf');
-        formData.append('store', 'Costco');
-        formData.append('payer', 'Brian');
+        formData.append('meta', uploadMeta(2));
         const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
         const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
         expect(receiptIds).toHaveLength(2);
@@ -457,8 +529,7 @@ describe('app', () => {
         const formData = new FormData();
         formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'a.pdf'))]), 'a.pdf');
         formData.append('files', new Blob([readFileSync(writeFixturePdf(dir, 'b.pdf', 210))]), 'b.pdf');
-        formData.append('store', 'Costco');
-        formData.append('payer', 'Brian');
+        formData.append('meta', uploadMeta(2));
         const uploadRes = await app.request('/api/uploads', { method: 'POST', body: formData });
         const { receiptIds } = (await uploadRes.json()) as { receiptIds: number[] };
 

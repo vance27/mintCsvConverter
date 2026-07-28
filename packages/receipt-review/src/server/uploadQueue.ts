@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception';
 import {
     queueReceiptForIngest,
     runIngestExtraction,
+    type IngestOptions,
     type PrismaClient,
     type VisionChatClient,
 } from '@mint-csv-converter/receipts';
@@ -46,11 +47,7 @@ export class UploadQueue {
         await this.drainPromise;
     }
 
-    async enqueue(
-        fileBuffer: Uint8Array,
-        filename: string,
-        options: { store: string; payer: string },
-    ): Promise<{ receiptId: number }> {
+    async enqueue(fileBuffer: Uint8Array, filename: string, options: IngestOptions): Promise<{ receiptId: number }> {
         const dir = mkdtempSync(join(tmpdir(), 'receipt-upload-'));
         try {
             const pdfPath = join(dir, filename);
