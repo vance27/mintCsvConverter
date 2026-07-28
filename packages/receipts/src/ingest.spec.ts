@@ -81,6 +81,19 @@ describe('ingestReceipt', () => {
         expect(lineItem.splits.map((s) => s.percent).sort()).toEqual([50, 50]);
     });
 
+    it('persists the extracted total into printedTotal alongside the derived total', async () => {
+        const { prisma, workDir } = setup();
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const pdfPath = writeFixturePdf(workDir, 'r1a.pdf');
+        const deps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
+
+        const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+        const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: result.receiptId } });
+        expect(receipt.printedTotal).toBe(21.98);
+        expect(receipt.total).toBe(21.98);
+    });
+
     it('persists the extraction’s own store reading into extractedStoreName', async () => {
         const { prisma, workDir } = setup();
         await seedParticipants(prisma, ['Brian', 'Patrice']);

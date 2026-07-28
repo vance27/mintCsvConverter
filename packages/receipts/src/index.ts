@@ -47,7 +47,7 @@ export {
     type QueueReceiptResult,
 } from './ingest.js';
 export { listManifestEntries, type ManifestEntry } from './receiptManifest.js';
-export { resolveItem } from './itemResolution.js';
+export { resolveItem, findOrCreateStore } from './itemResolution.js';
 export { matchByAmountAndStore, type MatchByAmountAndStoreOptions } from './matchByAmountAndStore.js';
 export { seedParticipants } from './seed.js';
 export {

@@ -7,7 +7,7 @@ import { cardAmount } from './tender.js';
 import { aggregateSplits, type AggregateLine } from './aggregate.js';
 import { retainReceiptSource } from './receiptStorage.js';
 import { canRetry } from './receiptStateMachine.js';
-import { resolveItem } from './itemResolution.js';
+import { resolveItem, findOrCreateStore } from './itemResolution.js';
 import type { PrismaClient } from './db.js';
 import type { Item, Participant } from './generated/prisma/client.js';
 import type { ExtractedLineItem } from './types.js';
@@ -174,6 +174,7 @@ export async function runIngestExtraction(
                     subtotal: extracted.subtotal,
                     tax: extracted.tax,
                     total: extracted.total,
+                    printedTotal: extracted.total,
                     cardAmount: cardAmountValue,
                     status: 'EXTRACTED',
                     reconciled: reconcileResult.reconciled,
@@ -288,14 +289,6 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
         };
     }
     return runIngestExtraction(receiptId, deps);
-}
-
-async function findOrCreateStore(prisma: PrismaClient, name: string) {
-    const existing = await prisma.store.findUnique({ where: { name } });
-    if (existing) {
-        return existing;
-    }
-    return prisma.store.create({ data: { name } });
 }
 
 async function findParticipantOrThrow(prisma: PrismaClient, name: string): Promise<Participant> {

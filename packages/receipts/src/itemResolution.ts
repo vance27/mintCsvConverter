@@ -1,8 +1,22 @@
 import { normalizeItemName } from './normalizeItemName.js';
 import { evenPercentages } from './aggregate.js';
 import type { PrismaClient } from './db.js';
-import { Prisma, type Item, type Participant } from './generated/prisma/client.js';
+import { Prisma, type Item, type Participant, type Store } from './generated/prisma/client.js';
 import type { ExtractedLineItem } from './types.js';
+
+/**
+ * Resolves a Store by name, creating it if it doesn't already exist. Shared
+ * by ingest.ts (queueing a new receipt) and packages/receipt-review's
+ * review-time Store correction (docs/adr/0010), so both paths resolve a
+ * declared store name identically.
+ */
+export async function findOrCreateStore(prisma: PrismaClient, name: string): Promise<Store> {
+    const existing = await prisma.store.findUnique({ where: { name } });
+    if (existing) {
+        return existing;
+    }
+    return prisma.store.create({ data: { name } });
+}
 
 async function splitPercentsFor(
     prisma: PrismaClient,
