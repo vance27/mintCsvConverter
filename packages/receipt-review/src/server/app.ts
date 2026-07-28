@@ -36,9 +36,12 @@ import {
     updateImportBatchSchema,
     deleteImportBatch,
     ImportBatchHasSyncedTransactionsError,
+    createOllamaModelLister,
+    listInstalledModels,
     type AggregateLine,
     type PrismaClient,
     type VisionChatClient,
+    type OllamaModelLister,
 } from '@mint-csv-converter/receipts';
 import { getReceiptDetail, listReceipts } from './receiptQueries.js';
 import { deleteReceipt, ReceiptNotDeletableError } from './receiptMutations.js';
@@ -69,6 +72,8 @@ export interface AppDeps {
     /** Overrides for tests only — default to automation's real runAuthorizeFlow/hasSavedCredentials. */
     runAuthorizeFlow?: () => Promise<void>;
     hasSavedCredentials?: () => boolean;
+    /** Override for tests only — defaults to a real createOllamaModelLister() against the local Ollama server. */
+    modelLister?: OllamaModelLister;
 }
 
 async function defaultRunAuthorizeFlow(): Promise<void> {
@@ -125,6 +130,7 @@ export function createApp(deps: AppDeps) {
         runAuthorizeFlow: deps.runAuthorizeFlow ?? defaultRunAuthorizeFlow,
         hasSavedCredentials: deps.hasSavedCredentials ?? automationHasSavedCredentials,
     });
+    const modelLister = deps.modelLister ?? createOllamaModelLister();
 
     const app = new Hono()
         .use(logger())
@@ -135,6 +141,9 @@ export function createApp(deps: AppDeps) {
         // Google Sheet embed's iframe src (SheetEmbedPage) — same SPREADSHEET_ID
         // env var automation's SheetsClient already reads.
         .get('/api/config', (c) => c.json({ spreadsheetId: process.env.SPREADSHEET_ID || null }))
+
+        // Locally installed Ollama models, for the upload page's Model picker (docs/adr/0007).
+        .get('/api/ollama-models', async (c) => c.json(await listInstalledModels(modelLister)))
 
         .get('/api/receipts', async (c) => {
             const receipts = await listReceipts(deps.prisma);

@@ -20,6 +20,7 @@ function receipt(overrides: Partial<ReceiptSummary> = {}): ReceiptSummary {
         originalFilename: 'receipt.pdf',
         extractionError: null,
         queuePosition: null,
+        model: 'qwen2.5vl:32b',
         ...overrides,
     };
 }

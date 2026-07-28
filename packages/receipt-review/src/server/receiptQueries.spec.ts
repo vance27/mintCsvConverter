@@ -97,6 +97,17 @@ describe('receiptQueries', () => {
         }
     });
 
+    it('includes the model used for extraction in both the queue list and receipt detail', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        const seeded = await seedBasicReceipt(prisma);
+        await prisma.receipt.update({ where: { id: seeded.receiptId }, data: { model: 'qwen2.5vl:7b' } });
+
+        const [results, detail] = await Promise.all([listReceipts(prisma), getReceiptDetail(prisma, seeded.receiptId)]);
+
+        expect(results[0].model).toBe('qwen2.5vl:7b');
+        expect(detail?.model).toBe('qwen2.5vl:7b');
+    });
+
     it('includes extractedStoreName in receipt detail, null when not set', async () => {
         ({ prisma, cleanup } = createTestDb());
         const seeded = await seedBasicReceipt(prisma);

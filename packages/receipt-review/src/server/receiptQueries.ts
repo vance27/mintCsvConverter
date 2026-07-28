@@ -28,6 +28,8 @@ export interface ReceiptSummary {
     extractionError: string | null;
     /** 1-based position among other QUEUED rows, oldest first; null for any other status. */
     queuePosition: number | null;
+    /** Ollama model this receipt was (or will be) extracted with (docs/adr/0007). */
+    model: string;
 }
 
 // Explicit priority instead of relying on enum-alphabetical order, now that
@@ -90,6 +92,7 @@ export async function listReceipts(prisma: PrismaClient): Promise<ReceiptSummary
             originalFilename: r.originalFilename,
             extractionError: r.extractionError,
             queuePosition: queuePositionById.get(r.id) ?? null,
+            model: r.model,
         };
     });
 
@@ -149,6 +152,8 @@ export interface ReceiptDetail {
     extractionError: string | null;
     /** The VLM's own store reading, straight off the receipt image — null when it couldn't read one, or not yet extracted (docs/adr/0004). */
     extractedStoreName: string | null;
+    /** Ollama model this receipt was (or will be) extracted with (docs/adr/0007). */
+    model: string;
     tenders: { kind: string; label: string; amount: number }[];
     lineItems: LineItemDetail[];
 }
@@ -226,6 +231,7 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
         originalFilename: receipt.originalFilename,
         extractionError: receipt.extractionError,
         extractedStoreName: receipt.extractedStoreName,
+        model: receipt.model,
         tenders: receipt.tenders.map((t) => ({ kind: t.kind, label: t.label, amount: t.amount })),
         lineItems,
     };

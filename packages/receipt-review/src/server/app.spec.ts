@@ -82,6 +82,17 @@ describe('app', () => {
         }
     });
 
+    it('lists locally installed Ollama models for the upload page picker', async () => {
+        const { app } = setup({
+            modelLister: { list: async () => ({ models: [{ name: 'qwen2.5vl:32b' }, { name: 'llama3.2:1b' }] }) },
+        });
+
+        const res = await app.request('/api/ollama-models');
+
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual(['llama3.2:1b', 'qwen2.5vl:32b']);
+    });
+
     it('lists receipts needing review', async () => {
         const { app } = setup();
         const seeded = await seedBasicReceipt(prisma);
