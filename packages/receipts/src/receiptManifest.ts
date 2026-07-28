@@ -25,7 +25,7 @@ export async function listManifestEntries(prisma: PrismaClient): Promise<Manifes
         include: {
             store: true,
             payer: true,
-            lineItems: { include: { splits: { include: { participant: true } } } },
+            lineItems: { where: { removedAt: null }, include: { splits: { include: { participant: true } } } },
         },
     });
 

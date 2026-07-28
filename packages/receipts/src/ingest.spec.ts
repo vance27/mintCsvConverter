@@ -305,6 +305,29 @@ describe('ingestReceipt', () => {
         expect(lineItem.itemId).toBe(leftover.id);
     });
 
+    it('persists each line item’s extracted taxable flag', async () => {
+        const { prisma, workDir } = setup();
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const pdfPath = writeFixturePdf(workDir, 'r10.pdf');
+        const mixedTaxableJson = {
+            ...RECEIPT_JSON,
+            items: [
+                { ...RECEIPT_JSON.items[0], itemCode: '1', rawName: 'TAXABLE ITEM', taxable: true },
+                { ...RECEIPT_JSON.items[0], itemCode: '2', rawName: 'NONTAXABLE ITEM', taxable: false },
+                { ...RECEIPT_JSON.items[0], itemCode: '3', rawName: 'UNKNOWN TAXABLE ITEM', taxable: null },
+            ],
+        };
+        const deps: IngestDeps = { prisma, client: fakeClient(mixedTaxableJson), receiptsBaseDir: join(workDir, 'store') };
+
+        const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+        const lineItems = await prisma.lineItem.findMany({
+            where: { receiptId: result.receiptId },
+            orderBy: { rawItemCode: 'asc' },
+        });
+        expect(lineItems.map((li) => li.taxable)).toEqual([true, false, null]);
+    });
+
     it('persists a tender breakdown and uses only the card portion for cardAmount when a purchase is split across tender types', async () => {
         const { prisma, workDir } = setup();
         await seedParticipants(prisma, ['Brian', 'Patrice']);
