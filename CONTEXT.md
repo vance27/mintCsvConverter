@@ -31,3 +31,14 @@ _Avoid_: Vendor, merchant (used interchangeably in prose, but Store is the canon
 **Model** (receipt):
 The Ollama vision-language model (e.g. `qwen2.5vl:32b`) used to extract a receipt, chosen per-upload rather than fixed globally for the whole server. Part of the row's uniqueness alongside its source PDF's content hash, so the same physical receipt can be deliberately re-ingested under a different model to compare extraction quality — each becomes its own ordinary Receipt row, reviewed side by side in the normal queue. See [ADR-0007](docs/adr/0007-per-upload-model-selection.md).
 _Avoid_: Engine, VLM (VLM is fine in prose for "vision-language model" generically, but Model is the field/column name)
+
+**Remove** (line item):
+A *soft* delete of one `LineItem` — sets `removedAt`, excluded from totals/aggregates, but stays in the DB and is shown struck-through with a Restore action rather than disappearing. Deliberately distinct from receipt-level **Delete**, which stays a hard, unrecoverable removal (see above) — the two operate at different granularity and different reversibility on purpose. See [ADR-0009](docs/adr/0009-line-items-become-fully-editable.md).
+_Avoid_: Delete (reserved for the receipt-level hard removal)
+
+**Printed total**:
+`Receipt.printedTotal` — the VLM's original `total` reading, preserved separately from the now fully-derived `Receipt.total` (which is recomputed from the current line items + tax on every edit). Exists so a reviewer's live corrections can still be checked against what the receipt actually printed, rather than the only ground-truth figure getting silently overwritten by the first edit. Itself directly correctable, for the case where the VLM misread that specific digit. See [ADR-0010](docs/adr/0010-receipt-fields-editable-with-printed-total-reference.md).
+_Avoid_: Extracted total, original total (printed total is the field/column name)
+
+**Taxable** (line item):
+Whether an item was taxed, per its printed receipt flag (Costco prints a trailing Y/N per line). Extracted by the VLM and persisted as `LineItem.taxable`, editable in review — record-keeping only for now, not used in any computed tax cross-check. See [ADR-0009](docs/adr/0009-line-items-become-fully-editable.md).
