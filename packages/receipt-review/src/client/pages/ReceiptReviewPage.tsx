@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InferResponseType } from 'hono/client';
 import { aggregateSplits, type AggregateLine } from '@mint-csv-converter/receipts/aggregate';
-import { describeReconcileMismatch } from '@mint-csv-converter/receipts/reconcile';
+import { describeReconcileMismatch, RECONCILE_TOLERANCE } from '@mint-csv-converter/receipts/reconcile';
 import { storeNamesDisagree } from '@mint-csv-converter/receipts/storeNameMatch';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RestoreIcon from '@mui/icons-material/RestoreFromTrash';
 import {
     Alert,
+    Autocomplete,
     Box,
     Chip,
     Container,
@@ -17,7 +18,9 @@ import {
     Divider,
     Grid,
     IconButton,
+    MenuItem,
     Paper,
+    Select,
     Slider,
     Stack,
     TextField,
@@ -32,6 +35,8 @@ import { api } from '../lib/api.js';
 type ReceiptDetail = InferResponseType<(typeof api.receipts)[':id']['$get']>;
 type LineItemDetail = ReceiptDetail['lineItems'][number];
 type SubmitResult = InferResponseType<(typeof api.receipts)[':id']['submit']['$post']>;
+type Participant = InferResponseType<typeof api.participants.$get>[number];
+type VariableSplitRule = InferResponseType<(typeof api)['variable-split-rules']['$get']>[number];
 
 interface ReceiptReviewPageProps {
     receiptId: number;
@@ -137,6 +142,10 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
     const [savingCodeId, setSavingCodeId] = useState<number | null>(null);
     const [addForm, setAddForm] = useState<AddItemForm>(emptyAddForm);
     const [addingItem, setAddingItem] = useState(false);
+    const [participants, setParticipants] = useState<Participant[]>([]);
+    const [storeOptions, setStoreOptions] = useState<string[]>([]);
+    const [storeInput, setStoreInput] = useState('');
+    const [savingFields, setSavingFields] = useState(false);
 
     const [leftName, rightName] = useMemo(
         () => (detail ? resolveNames(detail.lineItems) : ['Brian', 'Patrice']),
@@ -147,12 +156,60 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
         void load();
     }, [receiptId]);
 
+    // Store options mirror the Upload page's own field treatment (docs/adr/0003,
+    // docs/adr/0010): the VARIABLE vendor-list patterns (variable-split-rules)
+    // double as store-name suggestions, since a Store must match one of them
+    // as a substring for Sync to ever match it to a Citi transaction.
+    useEffect(() => {
+        void (async () => {
+            const [participantsRes, rulesRes] = await Promise.all([
+                api.participants.$get(),
+                api['variable-split-rules'].$get(),
+            ]);
+            setParticipants(await participantsRes.json());
+            setStoreOptions((await rulesRes.json()).map((r: VariableSplitRule) => r.pattern));
+        })();
+    }, []);
+
+    useEffect(() => {
+        setStoreInput(detail?.store ?? '');
+    }, [detail?.store]);
+
     async function load(): Promise<void> {
         const res = await api.receipts[':id'].$get({ param: { id: String(receiptId) } });
         const data = await res.json();
         const [left, right] = resolveNames(data.lineItems);
         setDetail(data);
         setDrafts(Object.fromEntries(data.lineItems.map((li) => [li.id, draftFromLineItem(li, left, right)])));
+    }
+
+    /**
+     * Immediate round-trip for receipt-level field corrections (docs/adr/0010)
+     * — same "the reviewer needs to see the result reflected" reasoning as
+     * Phase 1's item-code correction: a Store change re-resolves every line
+     * item, so it isn't deferred into the per-line Submit batch.
+     */
+    async function patchReceiptFields(
+        fields: Partial<{
+            store: string;
+            payer: string;
+            purchaseDate: string;
+            tax: number;
+            cardAmount: number;
+            printedTotal: number;
+        }>,
+    ): Promise<void> {
+        setSavingFields(true);
+        try {
+            const res = await api.receipts[':id'].$patch({ param: { id: String(receiptId) }, json: fields });
+            if (res.ok) {
+                setDetail(await res.json());
+            } else {
+                setError('Could not save that change.');
+            }
+        } finally {
+            setSavingFields(false);
+        }
     }
 
     const activeLineItems = useMemo(() => detail?.lineItems.filter((li) => li.removedAt === null) ?? [], [detail]);
@@ -180,6 +237,12 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
             0,
         );
     }, [activeLineItems, drafts]);
+
+    // Live (post-edit) total vs. the VLM's original printed reading — distinct
+    // from `reconciled`, which is frozen at ingest time (docs/adr/0010).
+    const printedTotalMismatch =
+        detail?.printedTotal != null &&
+        Math.abs(liveTotal + (detail.tax ?? 0) - detail.printedTotal) > RECONCILE_TOLERANCE;
 
     async function deleteLine(lineItemId: number): Promise<void> {
         setDeletingLineId(lineItemId);
@@ -339,6 +402,10 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
         );
     }
 
+    // Narrowed once here — TS doesn't retain the null-check above inside the
+    // event-handler closures below, since `detail` is a mutable state variable.
+    const purchaseDate = detail.purchaseDate;
+
     return (
         <Container maxWidth="xl" sx={{ py: 4 }}>
             <Grid container spacing={3}>
@@ -360,9 +427,7 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                 <Grid size={{ xs: 12, md: 6 }}>
                     <Stack spacing={2}>
                         <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
-                            <Typography variant="h4">
-                                {detail.store} — {detail.purchaseDate.slice(0, 10)}
-                            </Typography>
+                            <Typography variant="h4">Receipt #{detail.id}</Typography>
                             {detail.status === 'SUBMITTED' ? (
                                 <Chip
                                     size="small"
@@ -371,9 +436,105 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                                 />
                             ) : null}
                         </Stack>
+                        <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+                            <Autocomplete
+                                freeSolo
+                                disableClearable
+                                size="small"
+                                options={storeOptions}
+                                value={storeInput}
+                                disabled={savingFields}
+                                onInputChange={(_e, value) => setStoreInput(value)}
+                                onBlur={() => {
+                                    if (storeInput.trim() && storeInput.trim() !== detail.store) {
+                                        void patchReceiptFields({ store: storeInput.trim() });
+                                    }
+                                }}
+                                sx={{ minWidth: 180 }}
+                                renderInput={(params) => <TextField {...params} label="Store" />}
+                            />
+                            <Select
+                                size="small"
+                                value={detail.payer}
+                                disabled={savingFields}
+                                onChange={(e) => void patchReceiptFields({ payer: e.target.value })}
+                                sx={{ minWidth: 140 }}
+                            >
+                                {(participants.some((p) => p.name === detail.payer)
+                                    ? participants
+                                    : [{ id: -1, name: detail.payer }, ...participants]
+                                ).map((p) => (
+                                    <MenuItem key={p.id} value={p.name}>
+                                        {p.name}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                            <TextField
+                                key={`purchaseDate-${detail.id}-${purchaseDate}`}
+                                label="Purchase date"
+                                type="date"
+                                size="small"
+                                defaultValue={purchaseDate.slice(0, 10)}
+                                disabled={savingFields}
+                                onBlur={(e) => {
+                                    if (e.target.value && e.target.value !== purchaseDate.slice(0, 10)) {
+                                        void patchReceiptFields({ purchaseDate: e.target.value });
+                                    }
+                                }}
+                                slotProps={{ inputLabel: { shrink: true } }}
+                                sx={{ maxWidth: 170 }}
+                            />
+                            <TextField
+                                key={`tax-${detail.id}-${detail.tax}`}
+                                label="Tax"
+                                type="number"
+                                size="small"
+                                defaultValue={detail.tax ?? 0}
+                                disabled={savingFields}
+                                onBlur={(e) => {
+                                    const value = Number(e.target.value);
+                                    if (Number.isFinite(value) && value !== (detail.tax ?? 0)) {
+                                        void patchReceiptFields({ tax: value });
+                                    }
+                                }}
+                                slotProps={{ htmlInput: { step: 0.01, min: 0 } }}
+                                sx={{ maxWidth: 110 }}
+                            />
+                            <TextField
+                                key={`cardAmount-${detail.id}-${detail.cardAmount}`}
+                                label="Card amount"
+                                type="number"
+                                size="small"
+                                defaultValue={detail.cardAmount ?? 0}
+                                disabled={savingFields}
+                                onBlur={(e) => {
+                                    const value = Number(e.target.value);
+                                    if (Number.isFinite(value) && value !== (detail.cardAmount ?? 0)) {
+                                        void patchReceiptFields({ cardAmount: value });
+                                    }
+                                }}
+                                slotProps={{ htmlInput: { step: 0.01, min: 0 } }}
+                                sx={{ maxWidth: 130 }}
+                            />
+                            <TextField
+                                key={`printedTotal-${detail.id}-${detail.printedTotal}`}
+                                label="Printed total"
+                                type="number"
+                                size="small"
+                                defaultValue={detail.printedTotal ?? ''}
+                                disabled={savingFields}
+                                onBlur={(e) => {
+                                    const value = Number(e.target.value);
+                                    if (Number.isFinite(value) && value !== (detail.printedTotal ?? null)) {
+                                        void patchReceiptFields({ printedTotal: value });
+                                    }
+                                }}
+                                slotProps={{ htmlInput: { step: 0.01, min: 0 } }}
+                                sx={{ maxWidth: 130 }}
+                            />
+                        </Stack>
                         <Typography color="text.secondary">
-                            Paid by {detail.payer}. Total: ${detail.total.toFixed(2)} · Live total: $
-                            {liveTotal.toFixed(2)}.
+                            Total: ${detail.total.toFixed(2)} · Live total: ${liveTotal.toFixed(2)}.
                             {detail.reconciled
                                 ? ''
                                 : ` ⚠ ${detail.reconcile ? describeReconcileMismatch(detail.reconcile) : 'low confidence'} — check carefully against the PDF.`}
@@ -382,6 +543,13 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                             <Alert severity="warning">
                                 Declared store is "{detail.store}", but the receipt itself reads "
                                 {detail.extractedStoreName}" — check this is the right receipt before submitting.
+                            </Alert>
+                        ) : null}
+                        {printedTotalMismatch ? (
+                            <Alert severity="warning">
+                                Current total (${(liveTotal + (detail.tax ?? 0)).toFixed(2)}) doesn't match the
+                                receipt's printed total (${detail.printedTotal!.toFixed(2)}) — check the printed
+                                total field above, or your corrections, against the PDF.
                             </Alert>
                         ) : null}
                         {error ? <Alert severity="error">{error}</Alert> : null}
