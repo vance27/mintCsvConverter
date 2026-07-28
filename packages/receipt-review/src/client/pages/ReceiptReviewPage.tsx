@@ -590,6 +590,21 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                                             direction="row"
                                             sx={{ justifyContent: 'space-between', alignItems: 'flex-start' }}
                                         >
+                                            {line.hasImage ? (
+                                                <Box
+                                                    component="img"
+                                                    src={`/api/receipts/${receiptId}/line-items/${line.id}/image`}
+                                                    alt=""
+                                                    sx={{
+                                                        width: 40,
+                                                        height: 40,
+                                                        objectFit: 'cover',
+                                                        borderRadius: 1,
+                                                        mr: 1,
+                                                        flexShrink: 0,
+                                                    }}
+                                                />
+                                            ) : null}
                                             <TextField
                                                 variant="standard"
                                                 value={draft.displayName}

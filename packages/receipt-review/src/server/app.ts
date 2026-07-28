@@ -1,6 +1,6 @@
 import { readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { HTTPException } from 'hono/http-exception';
@@ -107,6 +107,16 @@ async function defaultRunAuthorizeFlow(): Promise<void> {
 // once, shortly after ingest, so cross-restart persistence isn't worth the
 // added invalidation concern (see costco-receipt-importer.md's Phase 3 plan).
 const pageImageCache = new Map<number, Buffer[]>();
+
+// Item photos are saved under whatever extension saveItemImage (itemImages.ts)
+// picked at scrape time — jpg is the overwhelmingly common case.
+const ITEM_IMAGE_CONTENT_TYPES: Record<string, string> = {
+    '.png': 'image/png',
+    '.webp': 'image/webp',
+    '.gif': 'image/gif',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+};
 
 const listTransactionsQuerySchema = z.object({
     importBatchId: z.coerce.number().int().optional(),
@@ -591,6 +601,21 @@ export function createApp(deps: AppDeps) {
                 throw new HTTPException(404, { message: `Page ${pageIndex} not found` });
             }
             return c.body(new Uint8Array(page), 200, { 'Content-Type': 'image/png' });
+        })
+
+        .get('/api/receipts/:id/line-items/:lineItemId/image', async (c) => {
+            const id = parseIntParam(c.req.param('id'));
+            const lineItemId = parseIntParam(c.req.param('lineItemId'));
+            const lineItem = await deps.prisma.lineItem.findUnique({
+                where: { id: lineItemId },
+                include: { item: true },
+            });
+            if (!lineItem || lineItem.receiptId !== id || !lineItem.item?.imagePath) {
+                throw new HTTPException(404, { message: `No image for line item ${lineItemId}` });
+            }
+            const contentType = ITEM_IMAGE_CONTENT_TYPES[extname(lineItem.item.imagePath).toLowerCase()] ?? 'image/jpeg';
+            const bytes = new Uint8Array(readFileSync(lineItem.item.imagePath));
+            return c.body(bytes, 200, { 'Content-Type': contentType });
         })
 
         .get('/api/receipts/:id/audit.html', async (c) => {

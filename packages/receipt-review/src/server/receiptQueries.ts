@@ -136,6 +136,8 @@ export interface LineItemDetail {
     priceHistory: PriceHistory;
     /** Whether this item already had a learned typical split before this receipt. */
     provenance: 'new' | 'learned';
+    /** Whether this line's item has a scraped photo (scrapeItemImages.ts) available at GET .../image — best-effort, expected to be false for most items. */
+    hasImage: boolean;
 }
 
 export interface ReceiptDetail {
@@ -220,6 +222,7 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
             splits: Object.fromEntries(lineItem.splits.map((s) => [s.participant.name, s.percent])),
             priceHistory,
             provenance,
+            hasImage: lineItem.item?.imagePath != null,
         });
     }
 
