@@ -44,7 +44,13 @@ import {
     type OllamaModelLister,
 } from '@mint-csv-converter/receipts';
 import { getReceiptDetail, listReceipts } from './receiptQueries.js';
-import { deleteReceipt, ReceiptNotDeletableError } from './receiptMutations.js';
+import {
+    deleteReceipt,
+    ReceiptNotDeletableError,
+    updateReceiptFields,
+    updateReceiptFieldsSchema,
+    UnknownParticipantError,
+} from './receiptMutations.js';
 import { listImportedTransactions, toTransactionSummary } from './transactionQueries.js';
 import {
     SplitsSumError,
@@ -174,6 +180,26 @@ export function createApp(deps: AppDeps) {
 
         .get('/api/receipts/:id', async (c) => {
             const id = parseIntParam(c.req.param('id'));
+            const detail = await getReceiptDetail(deps.prisma, id);
+            if (!detail) {
+                throw new HTTPException(404, { message: `Receipt ${id} not found` });
+            }
+            return c.json(detail);
+        })
+
+        // Receipt-level field corrections (docs/adr/0010) — Store, Payer,
+        // purchase date, tax, cardAmount, printedTotal — distinct from the
+        // per-line-item PATCH below.
+        .patch('/api/receipts/:id', zValidator('json', updateReceiptFieldsSchema), async (c) => {
+            const id = parseIntParam(c.req.param('id'));
+            try {
+                await updateReceiptFields(deps.prisma, id, c.req.valid('json'));
+            } catch (error) {
+                if (error instanceof UnknownParticipantError) {
+                    throw new HTTPException(400, { message: error.message });
+                }
+                throw error;
+            }
             const detail = await getReceiptDetail(deps.prisma, id);
             if (!detail) {
                 throw new HTTPException(404, { message: `Receipt ${id} not found` });

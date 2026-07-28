@@ -147,6 +147,8 @@ export interface ReceiptDetail {
     tax: number | null;
     total: number | null;
     cardAmount: number | null;
+    /** The VLM's original total reading, preserved separately from the now fully-derived `total` above (docs/adr/0010) — null for a receipt ingested before this field existed, or not yet extracted. */
+    printedTotal: number | null;
     reconciled: boolean;
     /** The full arithmetic breakdown behind `reconciled` — null for a receipt ingested before this field existed, or not yet extracted. */
     reconcile: ReconcileResult | null;
@@ -230,6 +232,7 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
         tax: receipt.tax,
         total: receipt.total,
         cardAmount: receipt.cardAmount,
+        printedTotal: receipt.printedTotal,
         reconciled: receipt.reconciled,
         reconcile: receipt.reconcileJson ? (JSON.parse(receipt.reconcileJson) as ReconcileResult) : null,
         status: receipt.status,

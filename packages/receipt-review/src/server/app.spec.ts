@@ -122,6 +122,39 @@ describe('app', () => {
         expect(detail.lineItems).toHaveLength(2);
     });
 
+    it('PATCHes receipt-level fields, rejecting an unknown payer name', async () => {
+        const { app } = setup();
+        const seeded = await seedBasicReceipt(prisma);
+
+        const bad = await app.request(`/api/receipts/${seeded.receiptId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payer: 'Nobody' }),
+        });
+        expect(bad.status).toBe(400);
+
+        const good = await app.request(`/api/receipts/${seeded.receiptId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ store: 'Target', payer: 'Patrice', tax: 2, cardAmount: 21, printedTotal: 21.5 }),
+        });
+        expect(good.status).toBe(200);
+        const detail = (await good.json()) as {
+            store: string;
+            payer: string;
+            tax: number;
+            cardAmount: number;
+            printedTotal: number;
+            total: number;
+        };
+        expect(detail.store).toBe('Target');
+        expect(detail.payer).toBe('Patrice');
+        expect(detail.tax).toBe(2);
+        expect(detail.cardAmount).toBe(21);
+        expect(detail.printedTotal).toBe(21.5);
+        expect(detail.total).toBe(22); // 20 (line items) + 2 tax
+    });
+
     it('rejects splits that do not sum to 100, accepts valid ones', async () => {
         const { app } = setup();
         const seeded = await seedBasicReceipt(prisma);
