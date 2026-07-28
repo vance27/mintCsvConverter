@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InferResponseType } from 'hono/client';
 import { aggregateSplits, type AggregateLine } from '@mint-csv-converter/receipts/aggregate';
+import { describeReconcileMismatch } from '@mint-csv-converter/receipts/reconcile';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {
     Alert,
@@ -238,7 +239,9 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
                         <Typography color="text.secondary">
                             Paid by {detail.payer}. Total: ${detail.total.toFixed(2)} · Live total: $
                             {liveTotal.toFixed(2)}.
-                            {detail.reconciled ? '' : ' ⚠ low confidence — check carefully against the PDF.'}
+                            {detail.reconciled
+                                ? ''
+                                : ` ⚠ ${detail.reconcile ? describeReconcileMismatch(detail.reconcile) : 'low confidence'} — check carefully against the PDF.`}
                         </Typography>
                         {error ? <Alert severity="error">{error}</Alert> : null}
 

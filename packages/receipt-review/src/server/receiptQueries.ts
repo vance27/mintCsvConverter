@@ -1,4 +1,10 @@
-import { aggregateSplits, ReceiptStatus, type AggregateLine, type PrismaClient } from '@mint-csv-converter/receipts';
+import {
+    aggregateSplits,
+    ReceiptStatus,
+    type AggregateLine,
+    type PrismaClient,
+    type ReconcileResult,
+} from '@mint-csv-converter/receipts';
 
 export interface ReceiptSummary {
     id: number;
@@ -135,6 +141,8 @@ export interface ReceiptDetail {
     total: number | null;
     cardAmount: number | null;
     reconciled: boolean;
+    /** The full arithmetic breakdown behind `reconciled` — null for a receipt ingested before this field existed, or not yet extracted. */
+    reconcile: ReconcileResult | null;
     status: ReceiptStatus;
     submittedAt: string | null;
     originalFilename: string | null;
@@ -210,6 +218,7 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
         total: receipt.total,
         cardAmount: receipt.cardAmount,
         reconciled: receipt.reconciled,
+        reconcile: receipt.reconcileJson ? (JSON.parse(receipt.reconcileJson) as ReconcileResult) : null,
         status: receipt.status,
         submittedAt: receipt.submittedAt ? receipt.submittedAt.toISOString() : null,
         originalFilename: receipt.originalFilename,
