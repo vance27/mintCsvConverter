@@ -170,6 +170,7 @@ export async function runIngestExtraction(
                     status: 'EXTRACTED',
                     reconciled: reconcileResult.reconciled,
                     reconcileJson: JSON.stringify(reconcileResult),
+                    extractedStoreName: extracted.store,
                 },
             });
 

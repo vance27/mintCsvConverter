@@ -81,6 +81,38 @@ describe('ingestReceipt', () => {
         expect(lineItem.splits.map((s) => s.percent).sort()).toEqual([50, 50]);
     });
 
+    it('persists the extraction’s own store reading into extractedStoreName', async () => {
+        const { prisma, workDir } = setup();
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const pdfPath = writeFixturePdf(workDir, 'r1b.pdf');
+        const deps: IngestDeps = {
+            prisma,
+            client: fakeClient({ ...RECEIPT_JSON, store: 'COSTCO WHOLESALE #123' }),
+            receiptsBaseDir: join(workDir, 'store'),
+        };
+
+        const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+        const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: result.receiptId } });
+        expect(receipt.extractedStoreName).toBe('COSTCO WHOLESALE #123');
+    });
+
+    it('persists a null extractedStoreName when the model could not read a store name', async () => {
+        const { prisma, workDir } = setup();
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const pdfPath = writeFixturePdf(workDir, 'r1c.pdf');
+        const deps: IngestDeps = {
+            prisma,
+            client: fakeClient({ ...RECEIPT_JSON, store: null }),
+            receiptsBaseDir: join(workDir, 'store'),
+        };
+
+        const result = await ingestReceipt(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+        const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: result.receiptId } });
+        expect(receipt.extractedStoreName).toBeNull();
+    });
+
     it('seeds a repeat item’s split from its learned ItemSplitDefault instead of an even split', async () => {
         const { prisma, workDir } = setup();
         const [brian, patrice] = await Promise.all([
