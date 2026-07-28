@@ -1,0 +1,6 @@
+dist
+coverage
+.nx
+pnpm-lock.yaml
+packages/receipts/src/generated
+packages/receipts/prisma/migrations

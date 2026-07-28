@@ -20,7 +20,7 @@ importers:
         version: 23.1.0(@babel/traverse@7.29.7(supports-color@7.2.0))(@zkochan/js-yaml@0.0.7)(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(nx@23.1.0)(supports-color@7.2.0)
       '@nx/eslint-plugin':
         specifier: 23.1.0
-        version: 23.1.0(@babel/traverse@7.29.7(supports-color@7.2.0))(@typescript-eslint/parser@8.65.0(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.8.3))(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(nx@23.1.0)(supports-color@7.2.0)(typescript@5.8.3)
+        version: 23.1.0(@babel/traverse@7.29.7(supports-color@7.2.0))(@typescript-eslint/parser@8.65.0(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.8.3))(eslint-config-prettier@10.1.8(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0)))(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(nx@23.1.0)(supports-color@7.2.0)(typescript@5.8.3)
       '@nx/js':
         specifier: 23.1.0
         version: 23.1.0(@babel/traverse@7.29.7(supports-color@7.2.0))(nx@23.1.0)(supports-color@7.2.0)
@@ -69,12 +69,18 @@ importers:
       eslint:
         specifier: 10.7.0
         version: 10.7.0(jiti@2.7.0)(supports-color@7.2.0)
+      eslint-config-prettier:
+        specifier: 10.1.8
+        version: 10.1.8(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))
       globals:
         specifier: 17.7.0
         version: 17.7.0
       nx:
         specifier: 23.1.0
         version: 23.1.0
+      prettier:
+        specifier: 3.9.6
+        version: 3.9.6
       prisma:
         specifier: 7.9.0
         version: 7.9.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(better-sqlite3@13.0.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.8.3)
@@ -2613,6 +2619,12 @@ packages:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
 
+  eslint-config-prettier@10.1.8:
+    resolution: {integrity: sha512-82GZUjRS0p/jganf6q1rEO25VSoHH0hKPCTrgillPjdI/3bgBhAE1QzHrHTizjpRvy6pGAvKjDJtk2pF9NDq8w==}
+    hasBin: true
+    peerDependencies:
+      eslint: '>=7.0.0'
+
   eslint-scope@9.1.2:
     resolution: {integrity: sha512-xS90H51cKw0jltxmvmHy2Iai1LIqrfbw57b79w/J7MfvDfkIkFZ+kj6zC3BjtUwh150HsSSdxXZcsuv72miDFQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
@@ -3462,6 +3474,11 @@ packages:
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
+
+  prettier@3.9.6:
+    resolution: {integrity: sha512-OpN0zzVdiaiAhxpuuj5efpIS4sY9j7bY6uR5mnj5yPzGkdkjNKSJeUThPb60Jw29QuAZgA4o+/iB49kFiaBX6g==}
+    engines: {node: '>=14'}
+    hasBin: true
 
   prisma@7.9.0:
     resolution: {integrity: sha512-isQTJEK4pyOlAVzm6kBUDjzgdsgs0A/snpB38ycTHeOHW34qfepP+ClQltgDXqjZBnXALhEtE4duh9L3tN5fHw==}
@@ -5202,7 +5219,7 @@ snapshots:
       yaml: 2.9.0
       yargs-parser: 21.1.1
 
-  '@nx/eslint-plugin@23.1.0(@babel/traverse@7.29.7(supports-color@7.2.0))(@typescript-eslint/parser@8.65.0(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.8.3))(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(nx@23.1.0)(supports-color@7.2.0)(typescript@5.8.3)':
+  '@nx/eslint-plugin@23.1.0(@babel/traverse@7.29.7(supports-color@7.2.0))(@typescript-eslint/parser@8.65.0(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.8.3))(eslint-config-prettier@10.1.8(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0)))(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(nx@23.1.0)(supports-color@7.2.0)(typescript@5.8.3)':
     dependencies:
       '@nx/devkit': 23.1.0(nx@23.1.0)
       '@nx/js': 23.1.0(@babel/traverse@7.29.7(supports-color@7.2.0))(nx@23.1.0)(supports-color@7.2.0)
@@ -5217,6 +5234,7 @@ snapshots:
       tslib: 2.8.1
     optionalDependencies:
       '@typescript-eslint/parser': 8.65.0(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.8.3)
+      eslint-config-prettier: 10.1.8(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0))
     transitivePeerDependencies:
       - '@babel/traverse'
       - '@swc-node/register'
@@ -6618,6 +6636,10 @@ snapshots:
 
   escape-string-regexp@4.0.0: {}
 
+  eslint-config-prettier@10.1.8(eslint@10.7.0(jiti@2.7.0)(supports-color@7.2.0)):
+    dependencies:
+      eslint: 10.7.0(jiti@2.7.0)(supports-color@7.2.0)
+
   eslint-scope@9.1.2:
     dependencies:
       '@types/esrecurse': 4.3.1
@@ -7556,6 +7578,8 @@ snapshots:
       tunnel-agent: 0.6.0
 
   prelude-ls@1.2.1: {}
+
+  prettier@3.9.6: {}
 
   prisma@7.9.0(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(better-sqlite3@13.0.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@5.8.3):
     dependencies:

@@ -3,6 +3,7 @@ import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 import nxEslintPlugin from '@nx/eslint-plugin';
+import eslintConfigPrettier from 'eslint-config-prettier';
 
 export default defineConfig(
   {
@@ -154,4 +155,9 @@ export default defineConfig(
       '@typescript-eslint/unbound-method': 'off',
     },
   },
+  // Must be last: turns off any ESLint stylistic rules that could conflict
+  // with Prettier's own formatting (a no-op today, since none of the
+  // configs above enable stylistic/formatting rules, but keeps it that way
+  // if one is ever added).
+  eslintConfigPrettier,
 );
