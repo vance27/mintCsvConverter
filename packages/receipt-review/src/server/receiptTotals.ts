@@ -1,4 +1,4 @@
-import { RECONCILE_TOLERANCE, type PrismaClient } from '@mint-csv-converter/receipts';
+import { tendersReconcile, type PrismaClient } from '@mint-csv-converter/receipts';
 
 function round2(n: number): number {
     return Math.round(n * 100) / 100;
@@ -29,8 +29,7 @@ export async function recomputeReceiptTotals(prisma: PrismaClient, receiptId: nu
 
     const subtotal = round2(lineItems.reduce((sum, li) => sum + (li.lineTotal - li.discountAmount), 0));
     const total = round2(subtotal + (receipt.tax ?? 0));
-    const tenderSum = tenders.reduce((sum, t) => sum + t.amount, 0);
-    const reconciled = tenders.length === 0 || Math.abs(tenderSum - total) <= RECONCILE_TOLERANCE;
+    const { reconciled } = tendersReconcile(tenders, total);
 
     await prisma.receipt.update({ where: { id: receiptId }, data: { subtotal, total, reconciled } });
 }

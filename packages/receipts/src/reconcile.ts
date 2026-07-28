@@ -29,13 +29,32 @@ export function reconcile(receipt: ExtractedReceipt, tolerance: number = RECONCI
     const lineSum = receipt.items.reduce((sum, item) => sum + (item.lineTotal - item.discountAmount), 0);
     const subtotalDelta = lineSum - receipt.subtotal;
     const totalDelta = receipt.subtotal + receipt.tax - receipt.total;
-    const tenderDelta =
-        receipt.tenders.length > 0
-            ? receipt.tenders.reduce((sum, tender) => sum + tender.amount, 0) - receipt.total
-            : null;
-    const reconciled =
-        Math.abs(subtotalDelta) <= tolerance &&
-        Math.abs(totalDelta) <= tolerance &&
-        (tenderDelta === null || Math.abs(tenderDelta) <= tolerance);
-    return { reconciled, lineSum, subtotalDelta, totalDelta, tenderDelta };
+    const tender = tendersReconcile(receipt.tenders, receipt.total, tolerance);
+    const reconciled = Math.abs(subtotalDelta) <= tolerance && Math.abs(totalDelta) <= tolerance && tender.reconciled;
+    return { reconciled, lineSum, subtotalDelta, totalDelta, tenderDelta: tender.delta };
+}
+
+export interface TenderReconcileResult {
+    /** Σ tenders − target; null when there were no tenders to check. */
+    delta: number | null;
+    reconciled: boolean;
+}
+
+/**
+ * Shared by reconcile() (checking an extraction's own tenders against its
+ * own total) and receipt-review's recomputeReceiptTotals (checking a
+ * receipt's untouched tenders against a post-edit total) — the same
+ * "does this set of tenders sum to the target, within tolerance"
+ * predicate, applied to two different targets.
+ */
+export function tendersReconcile(
+    tenders: { amount: number }[],
+    target: number,
+    tolerance: number = RECONCILE_TOLERANCE,
+): TenderReconcileResult {
+    if (tenders.length === 0) {
+        return { delta: null, reconciled: true };
+    }
+    const delta = tenders.reduce((sum, tender) => sum + tender.amount, 0) - target;
+    return { delta, reconciled: Math.abs(delta) <= tolerance };
 }
