@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { InferResponseType } from 'hono/client';
+import { aggregateSplits, type AggregateLine } from '@mint-csv-converter/receipts/aggregate';
 import DeleteIcon from '@mui/icons-material/Delete';
 import {
     Alert,
@@ -91,24 +92,17 @@ export function ReceiptReviewPage({ receiptId, onBack, onSubmitted }: ReceiptRev
         if (!detail) {
             return { [leftName]: 0, [rightName]: 0 };
         }
-        let leftTotal = 0;
-        let rightTotal = 0;
-        let netTotal = 0;
-        for (const line of detail.lineItems) {
+        const lines: AggregateLine[] = detail.lineItems.map((line) => {
             const draft = drafts[line.id];
-            const net = draft?.netPrice ?? line.lineTotal - line.discountAmount;
+            const netPrice = draft?.netPrice ?? line.lineTotal - line.discountAmount;
             const rightPercent = draft?.rightPercent ?? 50;
-            netTotal += net;
-            rightTotal += net * (rightPercent / 100);
-            leftTotal += net * ((100 - rightPercent) / 100);
-        }
-        if (netTotal <= 0) {
-            return { [leftName]: 0, [rightName]: 0 };
-        }
-        return {
-            [leftName]: Math.round((leftTotal / netTotal) * 100),
-            [rightName]: Math.round((rightTotal / netTotal) * 100),
-        };
+            return {
+                lineTotal: netPrice,
+                discountAmount: 0,
+                splits: { [leftName]: 100 - rightPercent, [rightName]: rightPercent },
+            };
+        });
+        return aggregateSplits(lines, [leftName, rightName]);
     }, [detail, drafts, leftName, rightName]);
 
     const liveTotal = useMemo(() => {

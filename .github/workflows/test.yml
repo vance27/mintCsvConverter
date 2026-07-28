@@ -22,5 +22,7 @@ jobs:
               run: pnpm typecheck
             - name: Build
               run: pnpm build
+            - name: Verify client bundle has no server-only deps
+              run: node packages/receipt-review/scripts/checkClientBundle.mjs
             - name: Run test suite
               run: pnpm test
