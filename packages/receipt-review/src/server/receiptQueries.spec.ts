@@ -97,6 +97,22 @@ describe('receiptQueries', () => {
         }
     });
 
+    it('includes extractedStoreName in receipt detail, null when not set', async () => {
+        ({ prisma, cleanup } = createTestDb());
+        const seeded = await seedBasicReceipt(prisma);
+
+        expect((await getReceiptDetail(prisma, seeded.receiptId))?.extractedStoreName).toBeNull();
+
+        await prisma.receipt.update({
+            where: { id: seeded.receiptId },
+            data: { extractedStoreName: 'COSTCO WHOLESALE #123' },
+        });
+
+        expect((await getReceiptDetail(prisma, seeded.receiptId))?.extractedStoreName).toBe(
+            'COSTCO WHOLESALE #123',
+        );
+    });
+
     it('reports a learned provenance once an ItemSplitDefault exists, and a price-change hint', async () => {
         ({ prisma, cleanup } = createTestDb());
         const seeded = await seedBasicReceipt(prisma);

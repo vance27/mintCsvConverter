@@ -147,6 +147,8 @@ export interface ReceiptDetail {
     submittedAt: string | null;
     originalFilename: string | null;
     extractionError: string | null;
+    /** The VLM's own store reading, straight off the receipt image — null when it couldn't read one, or not yet extracted (docs/adr/0004). */
+    extractedStoreName: string | null;
     tenders: { kind: string; label: string; amount: number }[];
     lineItems: LineItemDetail[];
 }
@@ -223,6 +225,7 @@ export async function getReceiptDetail(prisma: PrismaClient, receiptId: number):
         submittedAt: receipt.submittedAt ? receipt.submittedAt.toISOString() : null,
         originalFilename: receipt.originalFilename,
         extractionError: receipt.extractionError,
+        extractedStoreName: receipt.extractedStoreName,
         tenders: receipt.tenders.map((t) => ({ kind: t.kind, label: t.label, amount: t.amount })),
         lineItems,
     };
