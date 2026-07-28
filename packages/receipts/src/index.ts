@@ -12,7 +12,14 @@ export { storeNamesDisagree } from './storeNameMatch.js';
 export { isPending, hasReliableExtraction, canRetry, type ReceiptStatusLike } from './receiptStateMachine.js';
 export type { ExtractedReceipt, ExtractedLineItem } from './types.js';
 export { renderPdfPages } from './renderPdf.js';
-export { createOllamaClient, defaultOllamaModel, type VisionChatClient } from './ollamaClient.js';
+export {
+    createOllamaClient,
+    defaultOllamaModel,
+    createOllamaModelLister,
+    listInstalledModels,
+    type VisionChatClient,
+    type OllamaModelLister,
+} from './ollamaClient.js';
 export { createPrismaClient, getPrisma, defaultDatabaseUrl, type PrismaClient } from './db.js';
 export type {
     Item,

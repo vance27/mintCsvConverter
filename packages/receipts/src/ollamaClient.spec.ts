@@ -9,7 +9,7 @@ vi.mock('ollama', () => ({
 
 // Vitest hoists vi.mock() above imports at compile time, so ollamaClient.js
 // (imported below, after the mock is declared) picks up the mocked 'ollama'.
-import { createOllamaClient } from './ollamaClient.js';
+import { createOllamaClient, listInstalledModels, type OllamaModelLister } from './ollamaClient.js';
 
 type Chunk = { message: { content: string } };
 
@@ -95,5 +95,21 @@ describe('createOllamaClient', () => {
 
         await expect(pending).rejects.toThrow('aborted');
         expect(stream.abort).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('listInstalledModels', () => {
+    it('returns the installed models’ names, sorted', async () => {
+        const lister: OllamaModelLister = {
+            list: async () => ({ models: [{ name: 'qwen2.5vl:7b' }, { name: 'llama3.2:1b' }] }),
+        };
+
+        await expect(listInstalledModels(lister)).resolves.toEqual(['llama3.2:1b', 'qwen2.5vl:7b']);
+    });
+
+    it('returns an empty list when nothing is installed', async () => {
+        const lister: OllamaModelLister = { list: async () => ({ models: [] }) };
+
+        await expect(listInstalledModels(lister)).resolves.toEqual([]);
     });
 });

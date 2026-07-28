@@ -89,3 +89,19 @@ export function createOllamaClient(env: NodeJS.ProcessEnv = process.env): Vision
         },
     };
 }
+
+/** Narrow shape of the one Ollama call used to list locally pulled models — same testability pattern as VisionChatClient above. */
+export interface OllamaModelLister {
+    list(): Promise<{ models: { name: string }[] }>;
+}
+
+/** Builds a real OllamaModelLister against a local Ollama server (default http://localhost:11434) — a thin wrapper over its /api/tags. */
+export function createOllamaModelLister(env: NodeJS.ProcessEnv = process.env): OllamaModelLister {
+    return new Ollama({ host: env.OLLAMA_HOST });
+}
+
+/** Names of every model currently pulled/installed on the local Ollama server, for the Model picker (docs/adr/0007). */
+export async function listInstalledModels(lister: OllamaModelLister): Promise<string[]> {
+    const { models } = await lister.list();
+    return models.map((m) => m.name).sort();
+}
