@@ -124,6 +124,14 @@ model Receipt {
   // extracted; ingest.ts always populates it once extraction succeeds
   // (falling back to `total` when no tender breakdown was extracted).
   cardAmount       Float?
+  // The VLM's original `total` reading, preserved separately from `total`
+  // above once that column became fully re-derived from the current line
+  // items + tax on every review-time edit (docs/adr/0010) — otherwise the
+  // one ground-truth figure the receipt actually printed would be silently
+  // overwritten the first time any line was touched, leaving nothing to
+  // check a correction against. Itself directly correctable. Null for a
+  // receipt ingested before this field existed, or not yet extracted.
+  printedTotal     Float?
   status           ReceiptStatus @default(QUEUED)
   // Set when the review UI (Phase 3) transitions this receipt to SUBMITTED.
   submittedAt      DateTime?
