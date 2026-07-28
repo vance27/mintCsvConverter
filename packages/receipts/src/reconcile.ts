@@ -58,3 +58,31 @@ export function tendersReconcile(
     const delta = tenders.reduce((sum, tender) => sum + tender.amount, 0) - target;
     return { delta, reconciled: Math.abs(delta) <= tolerance };
 }
+
+function describeDelta(delta: number, aLabel: string, bLabel: string): string {
+    return `${aLabel} is $${Math.abs(delta).toFixed(2)} ${delta > 0 ? 'higher' : 'lower'} than ${bLabel}`;
+}
+
+/**
+ * Names which specific check(s) failed reconciliation, for surfacing in the
+ * review UI instead of a generic "low confidence" warning (see docs/adr/0006).
+ * Returns null when everything's within tolerance — including a receipt with
+ * no tender breakdown at all, since tenderDelta is only ever checked when
+ * non-null.
+ */
+export function describeReconcileMismatch(
+    result: ReconcileResult,
+    tolerance: number = RECONCILE_TOLERANCE,
+): string | null {
+    const problems: string[] = [];
+    if (Math.abs(result.subtotalDelta) > tolerance) {
+        problems.push(describeDelta(result.subtotalDelta, 'Line items sum', 'the subtotal'));
+    }
+    if (Math.abs(result.totalDelta) > tolerance) {
+        problems.push(describeDelta(result.totalDelta, 'Subtotal + tax', 'the total'));
+    }
+    if (result.tenderDelta !== null && Math.abs(result.tenderDelta) > tolerance) {
+        problems.push(describeDelta(result.tenderDelta, 'Tenders sum', 'the total'));
+    }
+    return problems.length > 0 ? problems.join('; ') : null;
+}

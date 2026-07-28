@@ -3,6 +3,7 @@ export {
     reconcile,
     RECONCILE_TOLERANCE,
     tendersReconcile,
+    describeReconcileMismatch,
     type ReconcileResult,
     type TenderReconcileResult,
 } from './reconcile.js';

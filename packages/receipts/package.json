@@ -18,6 +18,10 @@
             "types": "./dist/receiptStateMachine.d.ts",
             "default": "./dist/receiptStateMachine.js"
         },
+        "./reconcile": {
+            "types": "./dist/reconcile.d.ts",
+            "default": "./dist/reconcile.js"
+        },
         "./dist/testing/testDb.js": {
             "types": "./dist/testing/testDb.d.ts",
             "default": "./dist/testing/testDb.js"

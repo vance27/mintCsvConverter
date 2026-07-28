@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { reconcile } from './reconcile.js';
+import { reconcile, describeReconcileMismatch, type ReconcileResult } from './reconcile.js';
 import type { ExtractedReceipt } from './types.js';
 
 function makeReceipt(overrides: Partial<ExtractedReceipt> = {}): ExtractedReceipt {
@@ -120,5 +120,50 @@ describe('reconcile', () => {
         const result = reconcile(makeReceipt({ tenders: [{ kind: 'CARD', label: 'Card', amount: 10.0 }] }));
         expect(result.tenderDelta).toBeCloseTo(-11.0);
         expect(result.reconciled).toBe(false);
+    });
+});
+
+describe('describeReconcileMismatch', () => {
+    function result(overrides: Partial<ReconcileResult> = {}): ReconcileResult {
+        return { reconciled: true, lineSum: 20, subtotalDelta: 0, totalDelta: 0, tenderDelta: null, ...overrides };
+    }
+
+    it('returns null when everything is within tolerance', () => {
+        expect(describeReconcileMismatch(result())).toBeNull();
+    });
+
+    it('returns null when tenderDelta is null even if reconciled is somehow false', () => {
+        expect(describeReconcileMismatch(result({ reconciled: false }))).toBeNull();
+    });
+
+    it('names a subtotal mismatch, with direction', () => {
+        expect(describeReconcileMismatch(result({ subtotalDelta: 5 }))).toBe(
+            'Line items sum is $5.00 higher than the subtotal',
+        );
+        expect(describeReconcileMismatch(result({ subtotalDelta: -5 }))).toBe(
+            'Line items sum is $5.00 lower than the subtotal',
+        );
+    });
+
+    it('names a total mismatch', () => {
+        expect(describeReconcileMismatch(result({ totalDelta: 4.37 }))).toBe(
+            'Subtotal + tax is $4.37 higher than the total',
+        );
+    });
+
+    it('names a tender mismatch, ignoring a null tenderDelta', () => {
+        expect(describeReconcileMismatch(result({ tenderDelta: -1.2 }))).toBe(
+            'Tenders sum is $1.20 lower than the total',
+        );
+    });
+
+    it('combines multiple mismatches', () => {
+        expect(describeReconcileMismatch(result({ subtotalDelta: 5, totalDelta: -2 }))).toBe(
+            'Line items sum is $5.00 higher than the subtotal; Subtotal + tax is $2.00 lower than the total',
+        );
+    });
+
+    it('respects a custom tolerance', () => {
+        expect(describeReconcileMismatch(result({ subtotalDelta: 0.05 }), 0.1)).toBeNull();
     });
 });
