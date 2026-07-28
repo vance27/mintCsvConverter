@@ -135,6 +135,13 @@ model Receipt {
   // The last extraction attempt's error message — set only when status is
   // FAILED, cleared when the row is requeued for retry.
   extractionError  String?
+  // The VLM's own reading of the store name straight off the receipt image
+  // (extractReceipt.ts's `store` field) — persisted so the review UI can
+  // warn when it disagrees with the declared Store, catching a wrong
+  // declared Store (which picks the wrong extraction prompt) after the
+  // fact rather than not at all (docs/adr/0004). Null when the model
+  // couldn't read one, or for a receipt ingested before this field existed.
+  extractedStoreName String?
 
   store             Store              @relation(fields: [storeId], references: [id])
   payer             Participant        @relation(fields: [payerId], references: [id])
