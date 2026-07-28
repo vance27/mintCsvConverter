@@ -5,7 +5,7 @@
  * output — Prisma's real enum values are structurally assignable here, no
  * casts needed at server call sites.
  */
-export type ReceiptStatusLike = 'QUEUED' | 'EXTRACTING' | 'EXTRACTED' | 'SUBMITTED' | 'FAILED';
+export type ReceiptStatusLike = 'QUEUED' | 'EXTRACTING' | 'EXTRACTED' | 'SUBMITTED' | 'FAILED' | 'CANCELLED';
 
 /** Still being enqueued/extracted — no reliable total/cardAmount/purchaseDate yet. */
 export function isPending(status: ReceiptStatusLike): boolean {
@@ -17,7 +17,17 @@ export function hasReliableExtraction(status: ReceiptStatusLike): boolean {
     return status === 'EXTRACTED' || status === 'SUBMITTED';
 }
 
-/** A stuck extraction that can be reset back to QUEUED and reused. */
+/** A stuck (FAILED) or deliberately-stopped (CANCELLED) receipt that can be reset back to QUEUED and reused. */
 export function canRetry(status: ReceiptStatusLike): boolean {
-    return status === 'FAILED';
+    return status === 'FAILED' || status === 'CANCELLED';
+}
+
+/**
+ * Safe to hard-delete: a terminal status with no risk of destroying real
+ * data. EXTRACTED is included because submit — not extraction — is this
+ * app's one true confirmation point (see docs/adr/0008); only SUBMITTED
+ * (and the in-flight QUEUED/EXTRACTING statuses) stay protected.
+ */
+export function isDeletable(status: ReceiptStatusLike): boolean {
+    return status === 'FAILED' || status === 'CANCELLED' || status === 'EXTRACTED';
 }

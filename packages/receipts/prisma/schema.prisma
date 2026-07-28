@@ -92,6 +92,9 @@ enum ReceiptStatus {
   // A thrown extraction error (not a failed reconciliation, which still
   // lands on EXTRACTED with reconciled: false) — see extractionError below.
   FAILED
+  // The user deliberately stopped a QUEUED/EXTRACTING receipt, distinct from
+  // FAILED (extraction erroring out on its own). See docs/adr/0002.
+  CANCELLED
   SUBMITTED
 }
 
