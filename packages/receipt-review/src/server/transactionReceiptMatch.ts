@@ -1,4 +1,5 @@
 import { toIsoDate } from '@mint-csv-converter/automation';
+import { matchByAmountAndStore } from '@mint-csv-converter/receipts';
 import { hasReliableExtraction } from '@mint-csv-converter/receipts/receiptStateMachine';
 import type { ReceiptSummary } from './receiptQueries.js';
 
@@ -7,11 +8,6 @@ export interface ReceiptMatch {
     status: ReceiptSummary['status'];
     aggregate: Record<string, number>;
 }
-
-// Rounding-error tolerance between a staged transaction amount and a
-// receipt's cardAmount — both are decimal dollars, so a cent of float slop
-// is enough. Mirrors automation's manifestMatch.ts tolerance.
-const AMOUNT_TOLERANCE = 0.01;
 
 /**
  * Matches a 'Variably' ImportedTransaction against the live Receipt table
@@ -35,28 +31,20 @@ export function matchTransactionToReceipt(
             // `r.cardAmount ?? r.total` on such a row would be null, and the
             // amount-difference check below would coerce that to 0, producing
             // false-positive matches against receipts still mid-extraction.
-            hasReliableExtraction(r.status) &&
-            r.purchaseDate !== null &&
-            r.total !== null &&
-            r.payer.toLowerCase() === transaction.payer.toLowerCase() &&
-            transaction.description.toLowerCase().includes(r.store.toLowerCase()) &&
-            Math.abs(transaction.amount - (r.cardAmount ?? r.total)) <= AMOUNT_TOLERANCE,
+            hasReliableExtraction(r.status) && r.purchaseDate !== null && r.total !== null,
     );
 
-    if (candidates.length === 0) {
-        return null;
-    }
-    if (candidates.length === 1) {
-        return toReceiptMatch(candidates[0]);
-    }
-
-    const transactionMs = Date.parse(toIsoDate(transaction.date));
-    const closest = candidates.reduce((best, r) => {
-        const bestDelta = Math.abs(Date.parse(best.purchaseDate) - transactionMs);
-        const rDelta = Math.abs(Date.parse(r.purchaseDate) - transactionMs);
-        return rDelta < bestDelta ? r : best;
+    const match = matchByAmountAndStore(candidates, {
+        payer: transaction.payer,
+        description: transaction.description,
+        amount: transaction.amount,
+        targetDate: toIsoDate(transaction.date),
+        getPayer: (r) => r.payer,
+        getStore: (r) => r.store,
+        getAmount: (r) => r.cardAmount ?? r.total,
+        getPurchaseDate: (r) => r.purchaseDate,
     });
-    return toReceiptMatch(closest);
+    return match ? toReceiptMatch(match) : null;
 }
 
 function toReceiptMatch(receipt: ReceiptSummary): ReceiptMatch {

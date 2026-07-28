@@ -1,10 +1,6 @@
 import type { TransactionRow } from '@mint-csv-converter/core';
-import type { ManifestEntry } from '@mint-csv-converter/receipts';
+import { matchByAmountAndStore, type ManifestEntry } from '@mint-csv-converter/receipts';
 import { toIsoDate } from './dateUtils.js';
-
-// Rounding-error tolerance between a Citi CSV amount and a receipt's
-// cardAmount — both are decimal dollars, so a cent of float slop is enough.
-const AMOUNT_TOLERANCE = 0.01;
 
 // convertToExpenseSplitting bundles description + date into row[0] as
 // "<description> MM/DD/YYYY" (see csvConverterFactory.ts's
@@ -40,27 +36,15 @@ export function matchManifestEntry(
     const { description, date } = splitDescriptionAndDate(row[0]);
     const amount = Number.parseFloat(row[2]);
 
-    const candidates = entries.filter(
-        (entry) =>
-            entry.payer.toLowerCase() === payerName.toLowerCase() &&
-            description.toLowerCase().includes(entry.store.toLowerCase()) &&
-            Math.abs(amount - entry.cardAmount) <= AMOUNT_TOLERANCE,
-    );
-
-    if (candidates.length === 0) {
-        return null;
-    }
-    if (candidates.length === 1) {
-        return candidates[0].percentages;
-    }
-
-    // Multiple receipts at the same store, same day, same amount — tiebreak
-    // on whichever purchaseDate is closest to the transaction's date.
-    const transactionMs = Date.parse(toIsoDate(date));
-    const closest = candidates.reduce((best, entry) => {
-        const bestDelta = Math.abs(Date.parse(best.purchaseDate) - transactionMs);
-        const entryDelta = Math.abs(Date.parse(entry.purchaseDate) - transactionMs);
-        return entryDelta < bestDelta ? entry : best;
+    const match = matchByAmountAndStore(entries, {
+        payer: payerName,
+        description,
+        amount,
+        targetDate: toIsoDate(date),
+        getPayer: (entry) => entry.payer,
+        getStore: (entry) => entry.store,
+        getAmount: (entry) => entry.cardAmount,
+        getPurchaseDate: (entry) => entry.purchaseDate,
     });
-    return closest.percentages;
+    return match?.percentages ?? null;
 }
