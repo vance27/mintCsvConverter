@@ -99,36 +99,42 @@ enum ReceiptStatus {
 }
 
 model Receipt {
-  id           Int           @id @default(autoincrement())
-  storeId      Int
-  payerId      Int
-  sourceSha256 String        @unique
-  sourcePath   String
+  id               Int           @id @default(autoincrement())
+  storeId          Int
+  payerId          Int
+  sourceSha256     String        @unique
+  sourcePath       String
   // The uploaded file's own name, captured at enqueue time so a
   // QUEUED/EXTRACTING/FAILED row has something meaningful to show before
   // extraction has run. Never overwritten afterward. Nullable since rows
   // ingested before this field existed don't have one.
   originalFilename String?
   // Unknown until extraction succeeds — null for a QUEUED/EXTRACTING/FAILED row.
-  purchaseDate DateTime?
-  subtotal     Float?
-  tax          Float?
-  total        Float?
+  purchaseDate     DateTime?
+  subtotal         Float?
+  tax              Float?
+  total            Float?
   // Portion of `total` actually charged to a card — the amount that will
   // match a Citi CSV transaction. Differs from `total` when a purchase was
   // split across tender types (e.g. partly cash or Costco Cash Rewards).
   // Null only for receipts ingested before this field existed, or not yet
   // extracted; ingest.ts always populates it once extraction succeeds
   // (falling back to `total` when no tender breakdown was extracted).
-  cardAmount   Float?
-  status       ReceiptStatus @default(QUEUED)
+  cardAmount       Float?
+  status           ReceiptStatus @default(QUEUED)
   // Set when the review UI (Phase 3) transitions this receipt to SUBMITTED.
-  submittedAt  DateTime?
-  reconciled   Boolean       @default(false)
-  createdAt    DateTime      @default(now())
+  submittedAt      DateTime?
+  reconciled       Boolean       @default(false)
+  // The full ReconcileResult (reconcile.ts) as JSON — same "JSON as a String
+  // column" convention as periodResultsJson/columnMappingJson elsewhere in
+  // this schema. Lets the review UI name the specific mismatch (e.g. "total
+  // is $4.37 higher than line items + tax") instead of just a boolean. Null
+  // for a receipt ingested before this field existed, or not yet extracted.
+  reconcileJson    String?
+  createdAt        DateTime      @default(now())
   // The last extraction attempt's error message — set only when status is
   // FAILED, cleared when the row is requeued for retry.
-  extractionError String?
+  extractionError  String?
 
   store             Store              @relation(fields: [storeId], references: [id])
   payer             Participant        @relation(fields: [payerId], references: [id])
