@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 import { extractReconciledReceipt } from './extractReconciled.js';
-import type { VisionChatClient } from './ollamaClient.js';
+import { defaultOllamaModel, type VisionChatClient } from './ollamaClient.js';
 import { cardAmount } from './tender.js';
 import { normalizeItemName } from './normalizeItemName.js';
 import { aggregateSplits, evenPercentages, type AggregateLine } from './aggregate.js';
@@ -41,15 +41,17 @@ export interface IngestResult {
 
 export interface QueueReceiptResult {
     receiptId: number;
-    /** True when this hash already had a Receipt row that's already queued, in progress, extracted, or submitted — nothing new was created. */
+    /** True when this (hash, model) pair already had a Receipt row that's already queued, in progress, extracted, or submitted — nothing new was created. */
     alreadyQueued: boolean;
 }
 
 /**
  * Fast half of ingestion: hashes the file, retains it to permanent storage,
  * resolves store/payer, and creates a placeholder Receipt row (status
- * QUEUED) — or reuses an existing one by content hash, which is what makes
- * re-uploading the same PDF idempotent. A row stuck FAILED from a prior
+ * QUEUED) — or reuses an existing one by (content hash, model), which is
+ * what makes re-uploading the same PDF under the same model idempotent
+ * while still letting the same PDF be run again under a different model for
+ * side-by-side comparison (docs/adr/0007). A row stuck FAILED from a prior
  * attempt is reset to QUEUED and reused rather than duplicated, so retrying
  * doesn't require re-uploading. Does no VLM work — safe to await directly
  * from an HTTP request handler.
@@ -61,8 +63,9 @@ export async function queueReceiptForIngest(
 ): Promise<QueueReceiptResult> {
     const { prisma } = deps;
     const sourceSha256 = createHash('sha256').update(readFileSync(pdfPath)).digest('hex');
+    const model = options.model ?? defaultOllamaModel();
 
-    const existing = await prisma.receipt.findUnique({ where: { sourceSha256 } });
+    const existing = await prisma.receipt.findUnique({ where: { sourceSha256_model: { sourceSha256, model } } });
     if (existing) {
         if (canRetry(existing.status)) {
             await prisma.receipt.update({
@@ -72,8 +75,8 @@ export async function queueReceiptForIngest(
             return { receiptId: existing.id, alreadyQueued: false };
         }
         // EXTRACTED/SUBMITTED (already fully done), or QUEUED/EXTRACTING (a
-        // genuine concurrent duplicate upload of the same bytes, already in
-        // flight) — either way there's nothing new to enqueue.
+        // genuine concurrent duplicate upload of the same bytes under the same
+        // model, already in flight) — either way there's nothing new to enqueue.
         return { receiptId: existing.id, alreadyQueued: true };
     }
 
@@ -86,6 +89,7 @@ export async function queueReceiptForIngest(
             storeId: store.id,
             payerId: payer.id,
             sourceSha256,
+            model,
             sourcePath,
             originalFilename: basename(pdfPath),
             status: 'QUEUED',
@@ -108,7 +112,7 @@ export async function queueReceiptForIngest(
 export async function runIngestExtraction(
     receiptId: number,
     deps: IngestDeps,
-    options: { model?: string; signal?: AbortSignal } = {},
+    options: { signal?: AbortSignal } = {},
 ): Promise<IngestResult> {
     const { prisma, client } = deps;
     try {
@@ -121,7 +125,11 @@ export async function runIngestExtraction(
             attempts,
         } = await extractReconciledReceipt(receipt.sourcePath, client, {
             store: receipt.store.name,
-            model: options.model,
+            // The model chosen at queue time (queueReceiptForIngest), not a
+            // separately-passed option — it's what's already persisted on
+            // this row, and is what the (sourceSha256, model) uniqueness
+            // constraint is keyed on (docs/adr/0007).
+            model: receipt.model,
             signal: options.signal,
         });
 
@@ -258,9 +266,9 @@ export async function runIngestExtraction(
 
 /**
  * Ingests one receipt PDF end-to-end: queues it (idempotent by content
- * hash), then immediately runs extraction — the original one-call contract,
- * kept for the CLI and for tests that don't need queue semantics. The
- * upload queue (packages/receipt-review's UploadQueue) instead calls
+ * hash and model), then immediately runs extraction — the original one-call
+ * contract, kept for the CLI and for tests that don't need queue semantics.
+ * The upload queue (packages/receipt-review's UploadQueue) instead calls
  * queueReceiptForIngest/runIngestExtraction separately so it can enforce
  * one-at-a-time extraction across concurrent uploads.
  */
@@ -278,7 +286,7 @@ export async function ingestReceipt(pdfPath: string, options: IngestOptions, dep
             attempts: 0,
         };
     }
-    return runIngestExtraction(receiptId, deps, { model: options.model });
+    return runIngestExtraction(receiptId, deps);
 }
 
 async function splitPercentsFor(

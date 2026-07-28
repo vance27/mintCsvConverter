@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ingestReceipt, queueReceiptForIngest, runIngestExtraction, type IngestDeps } from './ingest.js';
 import { seedParticipants } from './seed.js';
 import { createTestDb } from './testing/testDb.js';
-import type { VisionChatClient } from './ollamaClient.js';
+import { defaultOllamaModel, type VisionChatClient } from './ollamaClient.js';
 import type { ReconcileResult } from './reconcile.js';
 
 function fakeClient(content: unknown): VisionChatClient {
@@ -380,6 +380,62 @@ describe('queueReceiptForIngest / runIngestExtraction', () => {
         expect(receipt.purchaseDate).toBeNull();
         expect(receipt.total).toBeNull();
         await expect(prisma.lineItem.count()).resolves.toBe(0);
+    });
+
+    it('defaults model to defaultOllamaModel() when none is given', async () => {
+        const { prisma, workDir } = setup();
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const pdfPath = writeFixturePdf(workDir, 'no-model.pdf');
+        const deps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
+
+        const { receiptId } = await queueReceiptForIngest(pdfPath, { store: 'Costco', payer: 'Brian' }, deps);
+
+        const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: receiptId } });
+        expect(receipt.model).toBe(defaultOllamaModel());
+    });
+
+    it('uploading the same PDF bytes under a model that has not been tried yet creates a second Receipt row', async () => {
+        const { prisma, workDir } = setup();
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const pdfPath = writeFixturePdf(workDir, 'multi-model.pdf');
+        const deps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
+
+        const first = await queueReceiptForIngest(
+            pdfPath,
+            { store: 'Costco', payer: 'Brian', model: 'qwen2.5vl:7b' },
+            deps,
+        );
+        const second = await queueReceiptForIngest(
+            pdfPath,
+            { store: 'Costco', payer: 'Brian', model: 'qwen2.5vl:32b' },
+            deps,
+        );
+
+        expect(second.alreadyQueued).toBe(false);
+        expect(second.receiptId).not.toBe(first.receiptId);
+        await expect(prisma.receipt.count()).resolves.toBe(2);
+    });
+
+    it('uploading the same PDF bytes under a model that has already been tried reuses the existing row', async () => {
+        const { prisma, workDir } = setup();
+        await seedParticipants(prisma, ['Brian', 'Patrice']);
+        const pdfPath = writeFixturePdf(workDir, 'same-model.pdf');
+        const deps: IngestDeps = { prisma, client: fakeClient(RECEIPT_JSON), receiptsBaseDir: join(workDir, 'store') };
+
+        const first = await queueReceiptForIngest(
+            pdfPath,
+            { store: 'Costco', payer: 'Brian', model: 'qwen2.5vl:7b' },
+            deps,
+        );
+        const second = await queueReceiptForIngest(
+            pdfPath,
+            { store: 'Costco', payer: 'Brian', model: 'qwen2.5vl:7b' },
+            deps,
+        );
+
+        expect(second.alreadyQueued).toBe(true);
+        expect(second.receiptId).toBe(first.receiptId);
+        await expect(prisma.receipt.count()).resolves.toBe(1);
     });
 
     it('re-queuing the same content hash while still QUEUED returns the same row instead of duplicating', async () => {
