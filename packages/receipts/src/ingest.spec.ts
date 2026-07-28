@@ -6,6 +6,7 @@ import { ingestReceipt, queueReceiptForIngest, runIngestExtraction, type IngestD
 import { seedParticipants } from './seed.js';
 import { createTestDb } from './testing/testDb.js';
 import type { VisionChatClient } from './ollamaClient.js';
+import type { ReconcileResult } from './reconcile.js';
 
 function fakeClient(content: unknown): VisionChatClient {
     return { chat: vi.fn(async () => ({ message: { content: JSON.stringify(content) } })) };
@@ -139,6 +140,12 @@ describe('ingestReceipt', () => {
         expect(result.attempts).toBe(1);
         expect(deps.client.chat).toHaveBeenCalledTimes(1);
         await expect(prisma.receipt.count()).resolves.toBe(1);
+
+        const receipt = await prisma.receipt.findUniqueOrThrow({ where: { id: result.receiptId } });
+        expect(receipt.reconcileJson).not.toBeNull();
+        const persisted = JSON.parse(receipt.reconcileJson!) as ReconcileResult;
+        expect(persisted.reconciled).toBe(false);
+        expect(persisted.totalDelta).toBeCloseTo(-977.02);
     });
 
     it('reuses an existing item by normalizedName when a fresh itemCode read misses, instead of colliding on create', async () => {

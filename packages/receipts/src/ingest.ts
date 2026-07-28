@@ -169,6 +169,7 @@ export async function runIngestExtraction(
                     cardAmount: cardAmountValue,
                     status: 'EXTRACTED',
                     reconciled: reconcileResult.reconciled,
+                    reconcileJson: JSON.stringify(reconcileResult),
                 },
             });
 
