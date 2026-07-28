@@ -17,9 +17,6 @@ export interface UploadQueueDeps {
     receiptsBaseDir?: string;
 }
 
-/** extractionError text a cancelled row is left with — shared so a cancel-while-QUEUED and a cancel-while-EXTRACTING land on the same message. */
-export const CANCELLED_MESSAGE = 'Cancelled by user';
-
 /**
  * Drives receipt extraction one at a time, matching the underlying
  * llama-server's own `-np 1` (single concurrent request) setting explicitly
@@ -67,10 +64,10 @@ export class UploadQueue {
         }
     }
 
-    /** Resets an already-FAILED receipt back to QUEUED and wakes the worker — no re-upload needed. */
+    /** Resets an already-FAILED or CANCELLED receipt back to QUEUED and wakes the worker — no re-upload needed. */
     async retry(receiptId: number): Promise<void> {
         const { count } = await this.deps.prisma.receipt.updateMany({
-            where: { id: receiptId, status: 'FAILED' },
+            where: { id: receiptId, status: { in: ['FAILED', 'CANCELLED'] } },
             data: { status: 'QUEUED', extractionError: null },
         });
         if (count === 0) {
@@ -80,7 +77,7 @@ export class UploadQueue {
             }
             if (!canRetry(receipt.status)) {
                 throw new HTTPException(400, {
-                    message: `Receipt ${receiptId} isn't FAILED (status: ${receipt.status}) — can't retry`,
+                    message: `Receipt ${receiptId} isn't FAILED or CANCELLED (status: ${receipt.status}) — can't retry`,
                 });
             }
         }
@@ -101,7 +98,7 @@ export class UploadQueue {
 
     /**
      * Stops a QUEUED or EXTRACTING receipt. A QUEUED row has no live request
-     * yet, so it's just flipped straight to FAILED, which drops it out of
+     * yet, so it's just flipped straight to CANCELLED, which drops it out of
      * drain()'s next `findFirst`. An EXTRACTING row's VLM call is genuinely
      * in flight — aborting its AbortController actually tears down the live
      * fetch to Ollama (see ollamaClient.ts's streaming reassembly, the one
@@ -117,7 +114,7 @@ export class UploadQueue {
         }
         const { count } = await this.deps.prisma.receipt.updateMany({
             where: { id: receiptId, status: 'QUEUED' },
-            data: { status: 'FAILED', extractionError: CANCELLED_MESSAGE },
+            data: { status: 'CANCELLED' },
         });
         if (count > 0) {
             console.log(`[upload:${receiptId}] cancelled while queued`);
@@ -171,11 +168,12 @@ export class UploadQueue {
                 if (controller.signal.aborted) {
                     // A deliberate cancel: runIngestExtraction's own catch already
                     // marked the row FAILED with whatever raw abort error text the
-                    // fetch threw — overwrite it with a clean, user-facing message,
-                    // and don't count this toward the consecutive-failure circuit
-                    // breaker (it isn't a sign anything is actually broken).
+                    // fetch threw — move it to CANCELLED with no extractionError
+                    // (that field is a FAILED-only concept now), and don't count
+                    // this toward the consecutive-failure circuit breaker (it
+                    // isn't a sign anything is actually broken).
                     await this.deps.prisma.receipt
-                        .update({ where: { id: next.id }, data: { extractionError: CANCELLED_MESSAGE } })
+                        .update({ where: { id: next.id }, data: { status: 'CANCELLED', extractionError: null } })
                         .catch(() => {
                             // Best-effort, same reasoning as runIngestExtraction's own FAILED-write catch.
                         });

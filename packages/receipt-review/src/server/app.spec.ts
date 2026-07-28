@@ -382,8 +382,8 @@ describe('app', () => {
 
         const afterCancel = (await (await app.request('/api/receipts')).json()) as ReceiptDetailStatusJson[];
         const cancelled = afterCancel.find((r) => r.id === queuedId);
-        expect(cancelled?.status).toBe('FAILED');
-        expect(cancelled?.extractionError).toBe('Cancelled by user');
+        expect(cancelled?.status).toBe('CANCELLED');
+        expect(cancelled?.extractionError).toBeNull();
         // The one actually extracting is untouched by the other's cancellation.
         expect(afterCancel.find((r) => r.id === extractingId)?.status).toBe('EXTRACTING');
 
@@ -457,10 +457,10 @@ describe('app', () => {
         const cancelRes = await app.request(`/api/receipts/${extractingId}/cancel`, { method: 'POST' });
         expect(cancelRes.status).toBe(200);
 
-        const cancelled = await pollReceiptStatus(app, extractingId, 'FAILED');
-        expect(cancelled.status).toBe('FAILED');
+        const cancelled = await pollReceiptStatus(app, extractingId, 'CANCELLED');
+        expect(cancelled.status).toBe('CANCELLED');
         const detail = (await (await app.request('/api/receipts')).json()) as ReceiptDetailStatusJson[];
-        expect(detail.find((r) => r.id === extractingId)?.extractionError).toBe('Cancelled by user');
+        expect(detail.find((r) => r.id === extractingId)?.extractionError).toBeNull();
 
         // A cancel isn't a real failure — the queue should still move on to the other item rather than tripping the circuit breaker.
         const other = await pollReceiptStatus(app, otherId, 'EXTRACTED');
